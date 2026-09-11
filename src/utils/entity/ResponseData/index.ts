@@ -16,8 +16,13 @@ class ResponseData<T> {
         return response;
     }
 
-    static error<T = any>(message: string = '操作失败', data: T | null = null): ResponseData<T> {
+    static error<T = any>(
+        message: string = '操作失败',
+        data: T | null = null,
+        code: ResponseCode = ResponseCode.ERROR
+    ): ResponseData<T> {
         const response = new ResponseData<T>();
+        response.code = code;
         response.message = message;
         response.data = data;
         return response;
