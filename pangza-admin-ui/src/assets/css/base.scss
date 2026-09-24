@@ -1,0 +1,15 @@
+@mixin flex-center {
+    @apply flex items-center justify-center;
+}
+
+@mixin flex-row-center {
+    @apply flex justify-center;
+}
+
+@mixin flex-column-center {
+    @apply flex items-center;
+}
+
+@mixin card-bg-color {
+    background-color: var(--td-bg-color-container);
+}

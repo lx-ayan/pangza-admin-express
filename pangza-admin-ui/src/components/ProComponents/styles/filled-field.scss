@@ -1,0 +1,58 @@
+/**
+ * Arco Design 风格填充态：默认灰底，聚焦变白
+ * 通过 FormItem 根节点 class: pro-form-field--filled 启用
+ * 注意：本文件以非 scoped 方式引入，勿使用 :deep()
+ */
+.pro-form-field--filled {
+    width: 100%;
+
+    /* 默认灰底（排除聚焦态，避免盖住变白规则） */
+    .t-input:not(.t-input--focused):not(.t-is-focused),
+    .t-textarea__inner:not(:focus),
+    .t-input-number .t-input:not(.t-input--focused):not(.t-is-focused),
+    .t-select .t-input:not(.t-input--focused):not(.t-is-focused),
+    .t-date-picker .t-input:not(.t-input--focused):not(.t-is-focused),
+    .t-date-range-picker .t-input:not(.t-input--focused):not(.t-is-focused) {
+        background-color: var(--td-bg-color-secondarycontainer) !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .t-input:hover:not(.t-is-disabled):not(.t-input--focused):not(.t-is-focused),
+    .t-textarea__inner:hover:not(:disabled):not(:focus),
+    .t-input-number:hover .t-input:not(.t-input--focused):not(.t-is-focused),
+    .t-select:hover:not(.t-is-disabled) .t-input:not(.t-input--focused):not(.t-is-focused),
+    .t-date-picker:hover .t-input:not(.t-input--focused):not(.t-is-focused),
+    .t-date-range-picker:hover .t-input:not(.t-input--focused):not(.t-is-focused) {
+        background-color: var(--td-bg-color-secondarycontainer) !important;
+        border-color: transparent !important;
+    }
+
+    /* 聚焦变白：Select / InputNumber / DatePicker 均作用在内部 .t-input 上 */
+    .t-input.t-input--focused,
+    .t-input.t-is-focused,
+    .t-textarea__inner:focus,
+    .t-input-number .t-input.t-input--focused,
+    .t-input-number .t-input.t-is-focused,
+    .t-select .t-input.t-input--focused,
+    .t-select .t-input.t-is-focused,
+    .t-date-picker .t-input.t-input--focused,
+    .t-date-picker .t-input.t-is-focused,
+    .t-date-range-picker .t-input.t-input--focused,
+    .t-date-range-picker .t-input.t-is-focused {
+        background-color: var(--td-bg-color-container) !important;
+        border-color: var(--td-brand-color) !important;
+        box-shadow: 0 0 0 2px var(--td-brand-color-focus) !important;
+    }
+
+    /* 禁用态保持灰底 */
+    .t-input.t-is-disabled,
+    .t-textarea__inner:disabled,
+    .t-input-number.t-is-disabled .t-input,
+    .t-select.t-is-disabled .t-input {
+        background-color: var(--td-bg-color-component-disabled) !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+    }
+}

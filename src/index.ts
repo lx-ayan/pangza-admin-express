@@ -1,61 +1,76 @@
-import { json } from "express";
-import "@/config"; // 优先加载 .env
-import Application from "./core/Application";
-import cors from "cors";
-import Auth, { AuthUtil } from "./core/Auth";
-import Redis from "./core/Redis";
+import "reflect-metadata";
+import { ensureUtf8Console } from "./framework/Logger";
 
-// 启动应用并注册全局中间件：cors -> json -> Auth -> 路由
-Application.start()
-  .registry(cors())
+// Windows 控制台尽早切 UTF-8，避免中文日志乱码
+ensureUtf8Console();
+
+import express, { json } from "express";
+import "@/framework/config";
+import { UPLOAD_PATH, UPLOAD_URL_PREFIX } from "@/framework/config";
+import Application from "./framework/Application";
+import cors from "cors";
+import Auth from "./framework/Auth";
+import Log from "./framework/Log";
+import Logger, { getLogger } from "./framework/Logger";
+import { configureOrm } from "./framework/ORM";
+import { encryptMiddleware } from "./framework/encrypt/middleware";
+import { initScheduleJobs } from "./framework/schedule/ScheduleManager";
+import Redis from "./framework/Redis";
+
+// 最先配置 pino，后续 getLogger 才绑到同一实例
+Application.registry(Logger({ level: "info" }));
+
+// SQL 日志：也可在 .env 设 ORM_SQL_LOG=true
+configureOrm({
+  sqlLog: true,
+  // 自定义格式（占位符：{time} {type} {sql} {params} {cost}）
+  // sqlLogFormat: "{time} | {type} | {sql} | {params}",
+  // 关闭某些片段：
+  // sqlLogParts: { time: true, type: true, sql: true, params: false, cost: true },
+  // 或函数完全自定义：
+  // sqlLogFormat: (info) => `${info.type} ${info.cost}ms => ${info.sql}`,
+});
+
+const log = getLogger("bootstrap");
+
+const app = Application.getApp();
+app.use(UPLOAD_URL_PREFIX, express.static(UPLOAD_PATH));
+
+Application.registry(cors())
   .registry(json())
+  .registry(encryptMiddleware())
   .registry(
     Auth({
-      // 登录接口不强制鉴权
-      ignore: ["/auth/login"],
-      // 会话 2 小时
-      timeout: 2 * 60 * 60 * 1000,
-      // 传入 Redis 后会话优先走 Redis
-      redis: Redis,
+      // 对齐 Sa-Token 常用配置
+      tokenName: "satoken",
+      header: "Authorization",
+      tokenPrefix: "",
+      // 30 天（毫秒）；-1 永不过期
+      timeout: 30 * 24 * 60 * 60 * 1000,
+      // 闲置超时：-1 不启用
+      activityTimeout: -1,
+      // false：新登录挤掉同账号旧登录
+      allowConcurrentLogin: false,
+      // false：每次登录新建 token
+      isShare: false,
+      // uuid | simple-uuid | random-32 | random-64 | random-128 | tik | jwt
+      tokenStyle: "uuid",
+      // tokenStyle: 'jwt' 时需要：
+      // jwtSecret: process.env.JWT_SECRET || 'change-me',
+      ignore: [
+        "/api/user/login",
+        "/api/user/check_login",
+        "/api/sys_config/public",
+        "/api/aes/key",
+      ],
+      redis: Redis
     })
   )
-  .routes();
+  .registry(Log())
+  // 自定义业务目录（可多目录）；不写则默认扫描 src/business
+  // .scan("src/business", "src/modules")
+  .start();
 
-/** 登录：成功后返回 token（演示账号 admin / 123456） */
-Application.GET("/auth/login", async (req) => {
-  const { username, password } = req.query ?? {};
-  if (username !== "admin" || password !== "123456") {
-    throw new Error("用户名或密码错误");
-  }
-  const token = await AuthUtil.login(1, ["admin"], ["user:list", "user:add"]);
-  return { token };
-});
-
-/** 注销当前 token */
-Application.GET("/auth/logout", async () => {
-  await AuthUtil.checkLogin();
-  await AuthUtil.logout();
-  return true;
-});
-
-/** 当前登录用户信息 */
-Application.GET("/auth/me", async () => {
-  const loginId = await AuthUtil.checkLogin();
-  return {
-    loginId,
-    roles: await AuthUtil.getRoleList(),
-    permissions: await AuthUtil.getPermissionList(),
-  };
-});
-
-/** 公开接口示例（未调用 checkLogin，可不带 token） */
-Application.GET<string>("/api", () => {
-  return "hello world";
-});
-
-/** 需要权限 user:list 的接口示例 */
-Application.GET<{ username: string }[]>("/user/list", async () => {
-  return [{ username: "admin" }, { username: "user" }];
-}, {
-  auth: { permissions: ["user:list"] },
+void initScheduleJobs().catch((e) => {
+  log.error(e, "Schedule 初始化失败");
 });
