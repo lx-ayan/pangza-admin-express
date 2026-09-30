@@ -137,6 +137,17 @@ class Application {
         return this;
     }
 
+    static static(url: string | string[]) {
+        if (Array.isArray(url)) {
+            for (const item of url) {
+                app.use(item, express.static(path.resolve(process.cwd(), item)));
+            }
+        } else {
+            app.use(url, express.static(path.resolve(process.cwd(), url)));
+        }
+        return this;
+    }
+
     /** 当前扫描根目录（只读） */
     static getScanRoots(): string[] {
         return [...this.scanRoots];
