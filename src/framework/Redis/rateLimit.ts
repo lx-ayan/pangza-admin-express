@@ -1,8 +1,55 @@
 import type { Request } from "express";
-import Redis from "@/framework/Redis";
+import Redis from "./Redis";
+import { getClientIp } from "@/framework/Log/ip";
 import { AuthUtil } from "@/framework/Auth";
 import { GuardError } from "./errors";
-import { REPEAT_SUBMIT_KEY, type RepeatSubmitOption } from "./types";
+import {
+  RATE_LIMIT_KEY,
+  REPEAT_SUBMIT_KEY,
+  RateLimiterType,
+  type RateLimitOption,
+  type RepeatSubmitOption,
+} from "./types";
+
+function buildRateLimitKey(
+  option: RateLimitOption,
+  req: Request,
+  meta: { controllerName?: string; handlerName?: string }
+): string {
+  const prefix = option.key ?? RATE_LIMIT_KEY;
+  let key = prefix;
+  const type = String(option.type ?? RateLimiterType.DEFAULT);
+  if (type === RateLimiterType.IP || type === "IP") {
+    key += `${getClientIp(req)}-`;
+  }
+  const controller = meta.controllerName || "Anonymous";
+  const handler = meta.handlerName || req.path;
+  key += `${controller}-${handler}`;
+  return key;
+}
+
+/**
+ * 接口限流（对齐 Java RateLimiterAspect）
+ */
+export async function applyRateLimit(
+  option: RateLimitOption | undefined,
+  req: Request,
+  meta: { controllerName?: string; handlerName?: string } = {}
+): Promise<void> {
+  if (!option) return;
+
+  const time = option.time ?? 2;
+  const count = option.count ?? 1;
+  const current = await Redis.rateLimit(
+    buildRateLimitKey(option, req, meta),
+    time,
+    count
+  );
+
+  if (current > count) {
+    throw new GuardError("访问过于频繁，请稍后重试");
+  }
+}
 
 const REPEAT_PARAM = "repeat_param";
 const REPEAT_TIME = "repeat_time";
@@ -62,8 +109,5 @@ export async function applyRepeatSubmit(
     }
   }
 
-  const client = await Redis.getClient();
-  await client.set(Redis.key(key), JSON.stringify(nowData), {
-    PX: Math.max(1, interval),
-  });
+  await Redis.setJSONPx(key, nowData, Math.max(1, interval));
 }

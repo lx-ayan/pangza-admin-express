@@ -8,7 +8,7 @@ import { getLogger } from "@/framework/Logger";
 import { ValidationError } from "@/framework/Validate";
 import { AuthError } from "@/framework/Auth";
 import { OrmError } from "@/framework/ORM";
-import { GuardError } from "@/framework/RateLimit";
+import { GuardError } from "@/framework/Redis";
 
 const log = getLogger("GlobalExceptionHandler");
 

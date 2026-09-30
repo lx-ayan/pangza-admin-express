@@ -16,7 +16,7 @@ import {
     applyRateLimit,
     applyRepeatSubmit,
     GuardError,
-} from '@/framework/RateLimit';
+} from '@/framework/Redis';
 import { ObjectMapper } from '@/framework/Json';
 import { handleException } from '@/framework/Exception';
 import { validateMethodArgs, ValidationError } from '@/framework/Validate';
@@ -560,8 +560,6 @@ export {
     AuthCheckPermission,
     AuthIgnore,
     Log,
-    RateLimiter,
-    RepeatSubmit,
     Flux,
     RequestBody,
     RequestQuery,
@@ -570,7 +568,11 @@ export {
     RequestCookie,
 } from "./decorators";
 export { BusinessType, OperType } from "@/framework/Log";
-export { RateLimiterType } from "@/framework/RateLimit";
+export {
+    RateLimiter,
+    RepeatSubmit,
+    RateLimiterType,
+} from "@/framework/Redis";
 export { Transactional } from "@/framework/ORM";
 export { getLogger, logger, configureLogger } from "@/framework/Logger";
 export {

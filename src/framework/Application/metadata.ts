@@ -4,7 +4,7 @@ import type { LogRecordOption } from "@/framework/Log";
 import type {
   RateLimitOption,
   RepeatSubmitOption,
-} from "@/framework/RateLimit";
+} from "@/framework/Redis";
 
 /** HTTP 方法 */
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";

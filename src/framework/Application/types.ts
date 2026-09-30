@@ -3,7 +3,7 @@ import type { AuthCheckMode } from "@/framework/Auth";
 import type {
   RateLimitOption,
   RepeatSubmitOption,
-} from "@/framework/RateLimit";
+} from "@/framework/Redis";
 
 /** 回调入参来源（RouteOption.paramType / 兼容旧写法） */
 export enum ParamType {

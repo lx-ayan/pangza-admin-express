@@ -4,7 +4,7 @@ import { ResponseCode } from "@/framework/types/enums";
 import { AuthError } from "@/framework/Auth";
 import { getLogger } from "@/framework/Logger";
 import { OrmError } from "@/framework/ORM";
-import { GuardError } from "@/framework/RateLimit";
+import { GuardError } from "@/framework/Redis";
 import { ValidationError } from "@/framework/Validate";
 import { resolveExceptionHandler } from "./registry";
 import { BizException } from "./types";
