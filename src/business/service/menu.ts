@@ -1,5 +1,11 @@
 import { BaseService, Resource, Service } from "@/framework/Service";
-import { OrmError, QueryWrapper } from "@/framework/ORM";
+import {
+  OrmError,
+  QueryWrapper,
+  TableSearch,
+  OperTypeEnum,
+  getQueryWrapperAndPage,
+} from "@/framework/ORM";
 import { AuthUtil } from "@/framework/Auth";
 import MenuMapper from "@/business/mapper/menu";
 import MenuRoleMapper from "@/business/mapper/menuRole";
@@ -33,11 +39,20 @@ export interface BindRoleDTO {
   roleIds: string[];
 }
 
-export interface MenuPageForm {
+/** 对齐 Java GetMenuPageDTO */
+export class GetMenuPageDTO {
+  @TableSearch({ operator: OperTypeEnum.LIKE })
   name?: string;
+
+  @TableSearch({ operator: OperTypeEnum.LIKE })
   title?: string;
+
+  @TableSearch()
   type?: string;
 }
+
+/** @deprecated 使用 GetMenuPageDTO */
+export type MenuPageForm = GetMenuPageDTO;
 
 const TOP_LEVEL_TITLE = "顶级菜单";
 const ROOT_PARENT = "-1";
@@ -97,22 +112,19 @@ export default class MenuService extends BaseService {
   }
 
   async getMenuPage(
-    pageRequest: PageRequest<MenuPageForm>
+    pageRequest: PageRequest<GetMenuPageDTO>
   ): Promise<PageResult<Record<string, unknown>>> {
-    const pageNum = pageRequest?.pageNum ?? 1;
-    const pageSize = pageRequest?.pageSize ?? 10;
-    const form = pageRequest?.form ?? {};
-
-    const wrapper = new QueryWrapper();
-    if (form.name) wrapper.like("name", form.name);
-    if (form.title) wrapper.like("title", form.title);
-    if (form.type) wrapper.eq("type", form.type);
-    wrapper.orderByAsc("sort_num");
-
-    const page = await this.selectPage(
-      { current: pageNum, size: pageSize },
-      wrapper
+    const { queryWrapper, page: pageQuery } = getQueryWrapperAndPage(
+      pageRequest?.form ?? {},
+      GetMenuPageDTO,
+      pageRequest?.pageNum ?? 1,
+      pageRequest?.pageSize ?? 10,
+      (w) => {
+        w.orderByAsc("sort_num");
+      }
     );
+
+    const page = await this.selectPage(pageQuery, queryWrapper);
     const list = rowsToCamel(page.records as any);
     await this.fillParentTitle(list);
     return toPageResult({ ...page, records: list });

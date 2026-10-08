@@ -1,6 +1,12 @@
 import bcrypt from "bcryptjs";
 import { BaseService, Resource, Service } from "@/framework/Service";
-import { OrmError, QueryWrapper } from "@/framework/ORM";
+import {
+  OrmError,
+  QueryWrapper,
+  TableSearch,
+  OperTypeEnum,
+  getQueryWrapperAndPage,
+} from "@/framework/ORM";
 import { AuthUtil } from "@/framework/Auth";
 import { convert } from "@/framework/Json";
 import { Email, Max, Min, NotNull, Phone } from "@/framework/Validate";
@@ -77,12 +83,23 @@ export interface BindUserRoleDTO {
   roleIds: string[];
 }
 
-export interface UserPageForm {
+/** 对齐 Java UserPageDTO */
+export class UserPageDTO {
+  @TableSearch({ operator: OperTypeEnum.LIKE })
   username?: string;
+
+  @TableSearch({ operator: OperTypeEnum.LIKE })
   nickName?: string;
+
+  @TableSearch({ operator: OperTypeEnum.LIKE })
   email?: string;
+
+  @TableSearch({ operator: OperTypeEnum.LIKE })
   phone?: string;
 }
+
+/** @deprecated 使用 UserPageDTO */
+export type UserPageForm = UserPageDTO;
 
 function collectRolesAndPermissions(rows: NameAndPermission[]): {
   roles: string[];
@@ -236,32 +253,28 @@ export default class UserService extends BaseService {
   }
 
   async getUserPage(
-    pageRequest: PageRequest<UserPageForm>
+    pageRequest: PageRequest<UserPageDTO>
   ): Promise<PageResult<Record<string, unknown>>> {
-    const pageNum = pageRequest?.pageNum ?? 1;
-    const pageSize = pageRequest?.pageSize ?? 10;
-    const form = pageRequest?.form ?? {};
-
-    const wrapper = new QueryWrapper().select(
-      "id",
-      "username",
-      "nick_name",
-      "email",
-      "phone",
-      "create_time",
-      "avatar",
-      "address"
+    const { queryWrapper, page: pageQuery } = getQueryWrapperAndPage(
+      pageRequest?.form ?? {},
+      UserPageDTO,
+      pageRequest?.pageNum ?? 1,
+      pageRequest?.pageSize ?? 10,
+      (w) => {
+        w.select(
+          "id",
+          "username",
+          "nick_name",
+          "email",
+          "phone",
+          "create_time",
+          "avatar",
+          "address"
+        ).orderByDesc("create_time");
+      }
     );
-    if (form.username) wrapper.like("username", form.username);
-    if (form.nickName) wrapper.like("nick_name", form.nickName);
-    if (form.email) wrapper.like("email", form.email);
-    if (form.phone) wrapper.like("phone", form.phone);
-    wrapper.orderByDesc("create_time");
 
-    const page = await this.selectPage(
-      { current: pageNum, size: pageSize },
-      wrapper
-    );
+    const page = await this.selectPage(pageQuery, queryWrapper);
     return toPageResult({
       ...page,
       records: rowsToCamel(page.records as any),

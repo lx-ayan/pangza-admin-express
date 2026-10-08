@@ -62,6 +62,8 @@ Application.registry(cors())
         "/api/user/check_login",
         "/api/sys_config/public",
         "/api/aes/key",
+        // 示例：/api/pub 下全部放行
+        // "/api/pub/**",
       ],
       redis: Redis
     })

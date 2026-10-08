@@ -110,6 +110,11 @@ export {
   useTable,
   clearTableCache,
   QueryWrapper,
+  TableSearch,
+  OperTypeEnum,
+  getTableSearchMeta,
+  getQueryWrapper,
+  getQueryWrapperAndPage,
   assertIdent,
   assertSafeUint,
   escapeLike,
@@ -167,6 +172,9 @@ export type {
   TableIdOptions,
   EntityFieldMeta,
   EntityTableMeta,
+  TableSearchOptions,
+  TableSearchMeta,
+  QueryWrapperAndPage,
 } from "./ORM";
 
 // ─── Log（操作日志模块工厂；方法装饰器见上方 Log）────────────────

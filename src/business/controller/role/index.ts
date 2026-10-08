@@ -13,9 +13,9 @@ import {
 } from "@/framework/Application";
 import { Resource } from "@/framework/Service";
 import RoleService, {
+  RolePageDTO,
   type BindMenuDTO,
   type CreateRoleDTO,
-  type RolePageForm,
 } from "@/business/service/role";
 import type { PageRequest } from "@/framework/utils/entity/PageResult";
 
@@ -28,7 +28,7 @@ export default class RoleController {
   @AuthCheckPermission(["system:role:page"])
   @RateLimiter({ count: 3 })
   @Log({ title: "角色分页", business: BusinessType.LIST })
-  page(@RequestBody() body: PageRequest<RolePageForm>) {
+  page(@RequestBody() body: PageRequest<RolePageDTO>) {
     return this.roleService.getRolePage(body);
   }
 

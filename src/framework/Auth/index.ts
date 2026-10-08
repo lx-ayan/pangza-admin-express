@@ -12,15 +12,90 @@ const DEFAULT_IGNORE_PATHS = [
   "/sitemap.xml",
 ];
 
-/** 判断路径是否在忽略列表中（支持前缀与尾部 *） */
+function normalizeIgnorePath(p: string): string {
+  if (!p) return "/";
+  let s = p.trim();
+  if (!s.startsWith("/")) s = `/${s}`;
+  // 保留模式里的通配；仅去掉末尾多余 /
+  if (s.length > 1 && s.endsWith("/") && !s.endsWith("*/") && !s.endsWith("**/")) {
+    s = s.slice(0, -1);
+  }
+  return s;
+}
+
+/**
+ * ignore 路径匹配（类 Ant / glob）：
+ * - `/api/user/login`     精确，或该路径下的子路径
+ * - `/api/pub/**`         以 `/api/pub` 开头的全部接口
+ * - `/api/pub/*`          仅一层：`/api/pub/xxx`，不含更深
+ * - `/api/aes*`           前缀（尾部单个 *）
+ */
 export function matchesIgnore(path: string, ignore: string[] = []): boolean {
-  const list = [...DEFAULT_IGNORE_PATHS, ...ignore];
-  return list.some((item) => {
-    if (item.endsWith("*")) {
-      return path.startsWith(item.slice(0, -1));
+  const requestPath = normalizeIgnorePath(path);
+  const list = [...DEFAULT_IGNORE_PATHS, ...ignore].map(normalizeIgnorePath);
+
+  return list.some((pattern) => matchIgnorePattern(requestPath, pattern));
+}
+
+function matchIgnorePattern(requestPath: string, pattern: string): boolean {
+  // /api/pub/** → /api/pub 及其所有子路径
+  if (pattern.endsWith("/**")) {
+    const base = pattern.slice(0, -3);
+    if (!base || base === "/") {
+      return true;
     }
-    return path === item || path.startsWith(`${item}/`) || path.startsWith(item);
-  });
+    return requestPath === base || requestPath.startsWith(`${base}/`);
+  }
+
+  // /api/pub/* → 仅匹配下一层
+  if (pattern.endsWith("/*")) {
+    const base = pattern.slice(0, -2);
+    if (!requestPath.startsWith(`${base}/`)) return false;
+    const rest = requestPath.slice(base.length + 1);
+    return rest.length > 0 && !rest.includes("/");
+  }
+
+  // /api/aes* → 尾部单个 * 视为前缀（可跨 /）
+  if (pattern.endsWith("*") && !pattern.slice(0, -1).includes("*")) {
+    return requestPath.startsWith(pattern.slice(0, -1));
+  }
+
+  // 其余含 * / ** 的 glob → 正则
+  if (pattern.includes("*")) {
+    return globToRegExp(pattern).test(requestPath);
+  }
+
+  // 无通配：精确匹配，或「目录前缀」（/api/foo 放行 /api/foo/bar，但不放行 /api/foobar）
+  return requestPath === pattern || requestPath.startsWith(`${pattern}/`);
+}
+
+/** 将 * / ** 转为正则（* 不跨 /，** 跨段） */
+function globToRegExp(pattern: string): RegExp {
+  let i = 0;
+  let out = "^";
+  while (i < pattern.length) {
+    const ch = pattern[i]!;
+    if (ch === "*" && pattern[i + 1] === "*") {
+      out += ".*";
+      i += 2;
+      // 吞掉 ** 后紧跟的 /，避免 /**/ 多要求一层
+      if (pattern[i] === "/") i += 1;
+      continue;
+    }
+    if (ch === "*") {
+      out += "[^/]*";
+      i += 1;
+      continue;
+    }
+    if (".+^${}()|[]\\".includes(ch)) {
+      out += `\\${ch}`;
+    } else {
+      out += ch;
+    }
+    i += 1;
+  }
+  out += "/?$";
+  return new RegExp(out);
 }
 
 /** 是否命中 Auth 全局 ignore（优先级最高） */

@@ -109,7 +109,7 @@ export interface AuthOptions {
   jwtSecret?: string;
   /** JWT 算法，默认 HS256 */
   jwtAlgorithm?: string;
-  /** 不注入鉴权上下文的路径（如登录接口） */
+  /** 不注入鉴权上下文的路径（支持通配：`/api/pub/**`、`/api/pub/*`、尾部 `*`） */
   ignore?: string[];
   /**
    * 传入封装好的 Redis 类后，会话优先走 Redis；

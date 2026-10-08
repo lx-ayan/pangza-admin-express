@@ -19,11 +19,11 @@ import {
 import { Resource } from "@/framework/Service";
 import UserService, {
   CreateUserDTO,
+  UserPageDTO,
   type BindUserRoleDTO,
   type LoginDTO,
   type UpdatePasswordDTO,
   type UpdateProfileDTO,
-  type UserPageForm,
 } from "@/business/service/user";
 import type { PageRequest } from "@/framework/utils/entity/PageResult";
 
@@ -77,7 +77,7 @@ export default class UserController {
   @PostMapping("/page")
   @AuthCheckLogin()
   @Log({ title: "用户分页", business: BusinessType.LIST })
-  page(@RequestBody() body: PageRequest<UserPageForm>) {
+  page(@RequestBody() body: PageRequest<UserPageDTO>) {
     return this.userService.getUserPage(body);
   }
 

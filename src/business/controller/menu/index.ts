@@ -13,9 +13,9 @@ import {
 } from "@/framework/Application";
 import { Resource } from "@/framework/Service";
 import MenuService, {
+  GetMenuPageDTO,
   type BindRoleDTO,
   type CreateMenuDTO,
-  type MenuPageForm,
 } from "@/business/service/menu";
 import type { PageRequest } from "@/framework/utils/entity/PageResult";
 
@@ -40,7 +40,7 @@ export default class MenuController {
   @AuthCheckPermission(["system:menu:page"])
   @RateLimiter({ count: 3, time: 5 })
   @Log({ title: "获取分页菜单", business: BusinessType.LIST })
-  page(@RequestBody() body: PageRequest<MenuPageForm>) {
+  page(@RequestBody() body: PageRequest<GetMenuPageDTO>) {
     return this.menuService.getMenuPage(body);
   }
 

@@ -5,6 +5,19 @@ export { BaseMapper } from "./BaseMapper";
 export { table, useTable, clearTableCache } from "./table";
 export { QueryWrapper, assertIdent } from "./QueryWrapper";
 export {
+  TableSearch,
+  OperTypeEnum,
+  getTableSearchMeta,
+  getQueryWrapper,
+  getQueryWrapperAndPage,
+} from "./tableSearch";
+export type {
+  OperType,
+  TableSearchOptions,
+  TableSearchMeta,
+  QueryWrapperAndPage,
+} from "./tableSearch";
+export {
   assertSafeUint,
   escapeLike,
   assertSafeLastSql,

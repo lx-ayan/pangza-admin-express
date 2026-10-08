@@ -1,5 +1,11 @@
 import { BaseService, Resource, Service } from "@/framework/Service";
-import { OrmError, QueryWrapper } from "@/framework/ORM";
+import {
+  OrmError,
+  QueryWrapper,
+  TableSearch,
+  OperTypeEnum,
+  getQueryWrapperAndPage,
+} from "@/framework/ORM";
 import RoleMapper from "@/business/mapper/role";
 import MenuRoleMapper from "@/business/mapper/menuRole";
 import { rowsToCamel, rowToCamel } from "@/framework/utils/case";
@@ -21,9 +27,14 @@ export interface BindMenuDTO {
   menuIds: string[];
 }
 
-export interface RolePageForm {
+/** 对齐 Java RolePageDTO：name → name_zh（Express 分页搜索用 LIKE） */
+export class RolePageDTO {
+  @TableSearch({ column: "name_zh", operator: OperTypeEnum.LIKE })
   name?: string;
 }
+
+/** @deprecated 使用 RolePageDTO */
+export type RolePageForm = RolePageDTO;
 
 @Service(RoleMapper)
 export default class RoleService extends BaseService {
@@ -31,20 +42,16 @@ export default class RoleService extends BaseService {
   menuRoleMapper!: MenuRoleMapper;
 
   async getRolePage(
-    pageRequest: PageRequest<RolePageForm>
+    pageRequest: PageRequest<RolePageDTO>
   ): Promise<PageResult<Record<string, unknown>>> {
-    const pageNum = pageRequest?.pageNum ?? 1;
-    const pageSize = pageRequest?.pageSize ?? 10;
-    const form = pageRequest?.form ?? {};
-
-    const wrapper = new QueryWrapper();
-    // 对齐 Java RolePageDTO：form.name 搜 name_zh
-    if (form.name) wrapper.like("name_zh", form.name);
-
-    const page = await this.selectPage(
-      { current: pageNum, size: pageSize },
-      wrapper
+    const { queryWrapper, page: pageQuery } = getQueryWrapperAndPage(
+      pageRequest?.form ?? {},
+      RolePageDTO,
+      pageRequest?.pageNum ?? 1,
+      pageRequest?.pageSize ?? 10
     );
+
+    const page = await this.selectPage(pageQuery, queryWrapper);
     return toPageResult({
       ...page,
       records: rowsToCamel(page.records as any),

@@ -135,6 +135,20 @@ export class QueryWrapper {
     ]);
   }
 
+  /** 左模糊：`%value`（对齐 MP likeLeft） */
+  likeLeft(column: string, value: string): this {
+    return this.add(`${this.col(column)} LIKE ? ESCAPE '\\\\'`, [
+      `%${escapeLike(String(value))}`,
+    ]);
+  }
+
+  /** 右模糊：`value%`（对齐 MP likeRight） */
+  likeRight(column: string, value: string): this {
+    return this.add(`${this.col(column)} LIKE ? ESCAPE '\\\\'`, [
+      `${escapeLike(String(value))}%`,
+    ]);
+  }
+
   /**
    * 追加自定义条件片段（参数绑定）。
    * 仅用于无法用 eq/like 表达的括号 OR 等场景；列名须自行保证安全。

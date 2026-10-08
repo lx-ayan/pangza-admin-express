@@ -3,6 +3,11 @@ export function snakeToCamel(key: string): string {
   return key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
+/** camelCase → snake_case */
+export function camelToSnake(key: string): string {
+  return key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+}
+
 /** 将行对象键名转为 camelCase（递归处理一层数组/对象） */
 export function rowToCamel<T = Record<string, unknown>>(
   row: Record<string, unknown> | null | undefined
