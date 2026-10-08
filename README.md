@@ -26,3 +26,7 @@ npm test
 ## 仓库
 
 https://github.com/lx-ayan/pangza-admin-express
+
+
+## 纯净的项目
+如果你需要定制纯净的项目，把 business, pangza-admin-ui 删除，然后配置自己的业务代码并开启扫描即可。
