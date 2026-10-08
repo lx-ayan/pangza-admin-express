@@ -24,7 +24,12 @@ export default function Log(options: LogModuleOptions = {}) {
 }
 
 export { LOG_MIDDLEWARE_FLAG } from "./flag";
-export { recordOperationLog, isLogRegistered, getLogOptions } from "./recorder";
+export {
+  configureLog,
+  recordOperationLog,
+  isLogRegistered,
+  getLogOptions,
+} from "./recorder";
 export {
   getClientIp,
   resolveIpAddress,
@@ -37,4 +42,5 @@ export type {
   LogRecordOption,
   BusinessTypeValue,
   OperTypeValue,
+  OperationLogRecord,
 } from "./types";

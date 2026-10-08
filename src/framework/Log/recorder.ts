@@ -1,10 +1,12 @@
 import type { Request } from "express";
 import { AuthUtil } from "@/framework/Auth";
 import { getLogger } from "@/framework/Logger";
-import { Container } from "@/framework/Service";
-import SysLogService from "@/business/service/sysLog";
 import { getClientIp, resolveIpAddress } from "./ip";
-import type { LogModuleOptions, LogRecordOption } from "./types";
+import type {
+  LogModuleOptions,
+  LogRecordOption,
+  OperationLogRecord,
+} from "./types";
 import { BusinessType, OperType } from "./types";
 
 const log = getLogger("OperLog");
@@ -34,6 +36,7 @@ export function configureLog(options: LogModuleOptions = {}): void {
     silent: options.silent ?? moduleOptions.silent,
     excludeParamNames:
       options.excludeParamNames ?? moduleOptions.excludeParamNames,
+    writer: options.writer ?? moduleOptions.writer,
   };
   logRegistered = true;
 }
@@ -95,10 +98,17 @@ export interface RecordLogContext {
 }
 
 /**
- * 异步写入操作日志（失败不影响业务）
+ * 异步写入操作日志（失败不影响业务）。
+ * 持久化由 Log({ writer }) 注入，framework 不依赖 business Service。
  */
 export async function recordOperationLog(ctx: RecordLogContext): Promise<void> {
   if (!shouldRecord(ctx.option)) return;
+
+  const writer = moduleOptions.writer;
+  if (!writer) {
+    // 未注入 writer（如删除 business）时静默跳过，便于纯净启动
+    return;
+  }
 
   try {
     const exclude = [
@@ -140,7 +150,7 @@ export async function recordOperationLog(ctx: RecordLogContext): Promise<void> {
       String(ctx.req.headers["user-agent"] || "")
     ).slice(0, 255);
 
-    const row = {
+    const row: OperationLogRecord = {
       title: ctx.option.title || "",
       username,
       avatar,
@@ -161,8 +171,7 @@ export async function recordOperationLog(ctx: RecordLogContext): Promise<void> {
       createTime: new Date(),
     };
 
-    const service = Container.get(SysLogService);
-    await service.insert(row as any);
+    await writer(row);
   } catch (e) {
     if (!moduleOptions.silent) {
       log.error({ err: e }, "记录操作日志失败");

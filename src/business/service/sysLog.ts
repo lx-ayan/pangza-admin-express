@@ -1,5 +1,6 @@
-import { BaseService, Service } from "@/framework/Service";
+import { BaseService, Container, Service } from "@/framework/Service";
 import { QueryWrapper } from "@/framework/ORM";
+import { configureLog, type OperationLogRecord } from "@/framework/Log";
 import SysLogMapper from "@/business/mapper/sysLog";
 import { rowsToCamel } from "@/framework/utils/case";
 import {
@@ -107,3 +108,10 @@ export default class SysLogService extends BaseService {
     return rowsToCamel(list as any);
   }
 }
+
+/** 示例：把框架操作日志写入本业务表（删除本文件即无落库） */
+configureLog({
+  writer: async (row: OperationLogRecord) => {
+    await Container.get(SysLogService).insert(row as any);
+  },
+});

@@ -11,10 +11,8 @@ import Application from "./framework/Application";
 import cors from "cors";
 import Auth from "./framework/Auth";
 import Log from "./framework/Log";
-import Logger, { getLogger } from "./framework/Logger";
+import Logger from "./framework/Logger";
 import { configureOrm } from "./framework/ORM";
-import { encryptMiddleware } from "./framework/encrypt/middleware";
-import { initScheduleJobs } from "./framework/schedule/ScheduleManager";
 import Redis from "./framework/Redis";
 
 // 最先配置 pino，后续 getLogger 才绑到同一实例
@@ -23,22 +21,13 @@ Application.registry(Logger({ level: "info" }));
 // SQL 日志：也可在 .env 设 ORM_SQL_LOG=true
 configureOrm({
   sqlLog: true,
-  // 自定义格式（占位符：{time} {type} {sql} {params} {cost}）
-  // sqlLogFormat: "{time} | {type} | {sql} | {params}",
-  // 关闭某些片段：
-  // sqlLogParts: { time: true, type: true, sql: true, params: false, cost: true },
-  // 或函数完全自定义：
-  // sqlLogFormat: (info) => `${info.type} ${info.cost}ms => ${info.sql}`,
 });
-
-const log = getLogger("bootstrap");
 
 const app = Application.getApp();
 app.use(UPLOAD_URL_PREFIX, express.static(UPLOAD_PATH));
 
 Application.registry(cors())
   .registry(json())
-  .registry(encryptMiddleware())
   .registry(
     Auth({
       // 对齐 Sa-Token 常用配置
@@ -62,17 +51,12 @@ Application.registry(cors())
         "/api/user/check_login",
         "/api/sys_config/public",
         "/api/aes/key",
-        // 示例：/api/pub 下全部放行
-        // "/api/pub/**",
+        "/api/pub/**",
       ],
-      redis: Redis
+      redis: Redis,
     })
   )
   .registry(Log())
-  // 自定义业务目录（可多目录）；不写则默认扫描 src/business
-  // .scan("src/business", "src/modules")
+  // 默认扫描 src/business（示例业务，可整包删除）
+  // 额外模块：.scan("src/business", "src/modules")
   .start();
-
-void initScheduleJobs().catch((e) => {
-  log.error(e, "Schedule 初始化失败");
-});

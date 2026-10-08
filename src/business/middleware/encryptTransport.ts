@@ -1,10 +1,22 @@
+/**
+ * 传输加密中间件（业务示例）。
+ * 开关读 sys_config；framework 只提供 AESUtil / DynamicAesKeyManager。
+ */
 import type { NextFunction, Request, Response } from "express";
+import Application from "@/framework/Application";
 import ResponseData from "@/framework/utils/entity/ResponseData";
+import { AESUtil } from "@/framework/encrypt/AESUtil";
+import { DynamicAesKeyManager } from "@/framework/encrypt/DynamicAesKeyManager";
 import { Container } from "@/framework/Service";
 import SysConfigService from "@/business/service/sysConfig";
-import { AESUtil } from "./AESUtil";
-import { DynamicAesKeyManager } from "./DynamicAesKeyManager";
-import { ENCRYPT_WHITE_LIST, EncryptConstants } from "./constants";
+
+const EncryptConstants = {
+  HEADER_SESSION: "X-Encrypt-Session",
+  BODY_FIELD: "encryptData",
+  REQUEST_ENCRYPT_ATTR: "pangza.encrypt.request",
+} as const;
+
+const ENCRYPT_WHITE_LIST = ["/api/aes/key", "/api/sys_config/public"] as const;
 
 function isWhiteList(path: string): boolean {
   return ENCRYPT_WHITE_LIST.some(
@@ -17,25 +29,16 @@ function isMultipart(req: Request): boolean {
   return ct.toLowerCase().startsWith("multipart/form-data");
 }
 
-function getSysConfigService(): SysConfigService | null {
-  try {
-    return Container.get(SysConfigService);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 加密传输中间件：
- * - 解密请求体 encryptData
- * - 加密响应 ResponseData.data
- */
-export function encryptMiddleware() {
+export function encryptTransportMiddleware() {
   return (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
       try {
-        const svc = getSysConfigService();
-        const enabled = svc ? await svc.isEncryptEnabled() : false;
+        let enabled = false;
+        try {
+          enabled = await Container.get(SysConfigService).isEncryptEnabled();
+        } catch {
+          enabled = false;
+        }
         if (!enabled || isWhiteList(req.path) || isMultipart(req)) {
           return next();
         }
@@ -144,3 +147,6 @@ export function encryptMiddleware() {
     })();
   };
 }
+
+// 模块加载时挂到 Application（示例能力，随本文件删除即失效）
+Application.getApp().use(encryptTransportMiddleware());

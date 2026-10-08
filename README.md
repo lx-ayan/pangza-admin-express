@@ -26,3 +26,6 @@ npm test
 ## 仓库
 
 https://github.com/lx-ayan/pangza-admin-express
+
+## 注意
+如果您需要一个纯净的项目，你可以把 business, 和 pangza-admin-ui 直接删除即可

@@ -10,8 +10,12 @@ import {
 } from "@/framework/utils/entity/PageResult";
 import {
   ScheduleManager,
+  configureSchedule,
+  initScheduleJobs,
   validateCron,
 } from "@/framework/schedule/ScheduleManager";
+import { getLogger } from "@/framework/Logger";
+import "@/business/schedule/tasks";
 
 export interface SchedulePageForm {
   title?: string;
@@ -161,8 +165,6 @@ export default class SysScheduleService extends BaseService {
     if (!beanName) {
       throw new OrmError("执行类（Bean 名称）不能为空");
     }
-    // 确保任务 Bean 已加载
-    require("../schedule/tasks");
     if (!Container.has(beanName)) {
       throw new OrmError(`未找到 Bean：${beanName}`);
     }
@@ -175,3 +177,27 @@ export default class SysScheduleService extends BaseService {
     }
   }
 }
+
+const scheduleLog = getLogger("sys-schedule");
+
+/** 示例：启动时从库加载启用中的定时任务 */
+configureSchedule({
+  loadJobs: async () => {
+    const service = Container.get(SysScheduleService);
+    const list = await service.selectList(new QueryWrapper().eq("status", 1));
+    return (list as any[]).map((row) => ({
+      id: String(row.id),
+      title: row.title,
+      cron: row.cron,
+      beanName: row.bean_name ?? row.beanName,
+      status: row.status,
+    }));
+  },
+});
+
+// 推迟到扫描完成后再加载，确保任务 Bean 已注册
+setImmediate(() => {
+  void initScheduleJobs().catch((e) => {
+    scheduleLog.error(e, "Schedule 初始化失败");
+  });
+});

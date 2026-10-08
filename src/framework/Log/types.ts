@@ -48,4 +48,31 @@ export interface LogModuleOptions {
   excludeParamNames?: string[];
   /** 异步写入失败是否打印 */
   silent?: boolean;
+  /**
+   * 业务侧注入的落库实现（framework 不依赖具体 Service）。
+   * 未配置时只组装日志字段，不写库。
+   */
+  writer?: (row: OperationLogRecord) => void | Promise<void>;
+}
+
+/** 操作日志落库行（由 framework 组装，business 负责持久化） */
+export interface OperationLogRecord {
+  title: string;
+  username: string;
+  avatar: string;
+  business: string;
+  oper: string;
+  params: string;
+  response: string;
+  methodName: string;
+  controllerName: string;
+  status: string;
+  timeLong: number;
+  ip: string;
+  address: string;
+  userAgent: string;
+  url: string;
+  errorMessage: string;
+  deleteFlag: number;
+  createTime: Date;
 }

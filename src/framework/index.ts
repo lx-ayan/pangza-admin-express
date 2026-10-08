@@ -181,6 +181,7 @@ export type {
 export {
   default as LogModule,
   LOG_MIDDLEWARE_FLAG,
+  configureLog,
   recordOperationLog,
   isLogRegistered,
   getLogOptions,
@@ -194,6 +195,7 @@ export type {
   LogRecordOption,
   BusinessTypeValue,
   OperTypeValue,
+  OperationLogRecord,
 } from "./Log";
 
 // ─── Logger ─────────────────────────────────────────────────────
@@ -290,20 +292,22 @@ export {
   ormEnvConfig,
 } from "./config";
 
-// ─── encrypt ────────────────────────────────────────────────────
-export { encryptMiddleware } from "./encrypt/middleware";
-export { AESUtil } from "./encrypt/AESUtil";
-export { DynamicAesKeyManager } from "./encrypt/DynamicAesKeyManager";
-export { EncryptConstants, ENCRYPT_WHITE_LIST } from "./encrypt/constants";
+// ─── encrypt（仅工具方法，不含业务开关 / 中间件）────────────────
+export { AESUtil, DynamicAesKeyManager } from "./encrypt";
 
 // ─── schedule ───────────────────────────────────────────────────
 export {
   ScheduleManager,
   initScheduleJobs,
+  configureSchedule,
   convertQuartzCron,
   validateCron,
 } from "./schedule/ScheduleManager";
-export type { ScheduleJobEntity } from "./schedule/ScheduleManager";
+export type {
+  ScheduleJobEntity,
+  ScheduleJobLoader,
+  ScheduleModuleOptions,
+} from "./schedule/ScheduleManager";
 
 // ─── utils ──────────────────────────────────────────────────────
 export { default as ResponseData } from "./utils/entity/ResponseData";

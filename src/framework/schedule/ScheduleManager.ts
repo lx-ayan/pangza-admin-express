@@ -1,7 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { Container } from "@/framework/Service";
-import { OrmError, QueryWrapper } from "@/framework/ORM";
-import SysScheduleService from "@/business/service/sysSchedule";
+import { OrmError } from "@/framework/ORM";
 
 export interface ScheduleJobEntity {
   id: string;
@@ -9,6 +8,23 @@ export interface ScheduleJobEntity {
   cron: string;
   beanName: string;
   status?: number | null;
+}
+
+/** 业务侧注入：加载启用中的定时任务列表 */
+export type ScheduleJobLoader = () =>
+  | ScheduleJobEntity[]
+  | Promise<ScheduleJobEntity[]>;
+
+export interface ScheduleModuleOptions {
+  loadJobs?: ScheduleJobLoader;
+}
+
+let jobLoader: ScheduleJobLoader | null = null;
+
+export function configureSchedule(options: ScheduleModuleOptions = {}): void {
+  if (options.loadJobs) {
+    jobLoader = options.loadJobs;
+  }
 }
 
 /**
@@ -55,7 +71,8 @@ function invokeBean(beanName: string): void {
 }
 
 /**
- * 定时任务调度管理（node-cron）
+ * 定时任务调度管理（node-cron）。
+ * 任务列表由业务通过 loadJobs 注入，framework 不依赖 business Service。
  */
 class ScheduleManagerImpl {
   private readonly jobs = new Map<string, ScheduledTask>();
@@ -105,30 +122,16 @@ class ScheduleManagerImpl {
   }
 
   async loadEnabled(): Promise<void> {
-    // 确保示例任务 Bean 已注册
-    require("../../business/schedule/tasks");
-
-    let service: SysScheduleService;
-    try {
-      service = Container.get(SysScheduleService);
-    } catch {
-      console.warn("[Schedule] SysScheduleService 未就绪，跳过初始化");
+    if (!jobLoader) {
+      console.warn("[Schedule] 未配置 loadJobs，跳过初始化");
       return;
     }
 
     try {
-      const list = await service.selectList(
-        new QueryWrapper().eq("status", 1)
-      );
-      for (const row of list as any[]) {
+      const list = await jobLoader();
+      for (const row of list) {
         try {
-          this.scheduleJob({
-            id: String(row.id),
-            title: row.title,
-            cron: row.cron,
-            beanName: row.bean_name ?? row.beanName,
-            status: row.status,
-          });
+          this.scheduleJob(row);
         } catch (e) {
           console.error(
             `[Schedule] 启动加载失败 id=${row.id}:`,
@@ -149,6 +152,11 @@ class ScheduleManagerImpl {
 export const ScheduleManager = new ScheduleManagerImpl();
 
 /** 启动后加载启用中的定时任务 */
-export async function initScheduleJobs(): Promise<void> {
+export async function initScheduleJobs(
+  options: ScheduleModuleOptions = {}
+): Promise<void> {
+  if (options.loadJobs) {
+    configureSchedule(options);
+  }
   await ScheduleManager.loadEnabled();
 }
