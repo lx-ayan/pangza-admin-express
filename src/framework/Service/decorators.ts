@@ -7,6 +7,7 @@ import type {
 } from "@/framework/ORM";
 import { getEntityTableMeta } from "@/framework/ORM/entityDecorators";
 import { MAPPER_ENTITY_KEY } from "@/framework/ORM/sqlDecorators";
+import { registerBeansFromComponent, type BeanToken } from "./bean";
 import { Container, type Ctor } from "./container";
 import { MAPPER_DELEGATE_METHODS } from "./types";
 
@@ -15,16 +16,18 @@ const MAPPER_BEAN_KEY = Symbol.for("pangza.service.mapperBean");
 type EntityCtor = new (...args: any[]) => object;
 
 /**
- * 构造器注入（Inversify `@inject`），Token 必须是类。
+ * 构造器注入（Inversify `@inject`），Token 为类 / 字符串 / Symbol。
  *
  * @example
  * constructor(@Inject(UserMapper) private mapper: UserMapper) {}
+ * constructor(@Inject("uploadPath") private path: string) {}
  */
 export const Inject = inject;
 
 /**
  * @Component() / @Component("alias")
  * 按「类」注册到容器；可选字符串别名（仅定时任务等）。
+ * 类上的 @Bean 工厂方法返回值也会注册进容器。
  *
  * @example
  * @Component()
@@ -40,30 +43,38 @@ export function Component(alias?: string): ClassDecorator {
     if (alias?.trim()) {
       Container.bindAlias(alias.trim(), Ctor);
     }
+    registerBeansFromComponent(Ctor);
   };
 }
 
 /**
- * @Resource(Type)
- * 属性按「类」懒注入单例（不再支持字符串名）。
+ * @Resource(Type | "name" | symbol)
+ * 属性懒注入：类单例，或 @Bean 注册的常量。
  *
- * Controller / Service 上推荐写法：
  * @example
  * @Resource(UserService)
  * private userService!: UserService;
+ *
+ * @Resource("uploadPath")
+ * private uploadPath!: string;
  */
-export function Resource(type: Ctor): PropertyDecorator {
-  const applyInject = inject(type) as PropertyDecorator;
+export function Resource(type: BeanToken): PropertyDecorator {
   return (target, propertyKey) => {
-    if (typeof type !== "function") {
+    if (
+      typeof type !== "function" &&
+      typeof type !== "string" &&
+      typeof type !== "symbol"
+    ) {
       throw new Error(
-        `@Resource 请传入类，例如 @Resource(UserService)，属性: ${String(
-          propertyKey
-        )}`
+        `@Resource 请传入类或字符串 Token，属性: ${String(propertyKey)}`
       );
     }
-    // 交给 Inversify：容器创建实例时按类注入
-    applyInject(target, propertyKey);
+
+    // 类 Token 交给 Inversify 属性注入；字符串/Symbol 仅用懒 getter
+    if (typeof type === "function") {
+      const applyInject = inject(type) as PropertyDecorator;
+      applyInject(target, propertyKey);
+    }
 
     const key = String(propertyKey);
     Object.defineProperty(target, key, {
@@ -72,7 +83,7 @@ export function Resource(type: Ctor): PropertyDecorator {
           ? (this as Record<string, unknown>)[key]
           : undefined;
         if (own !== undefined) return own;
-        return Container.get(type);
+        return Container.get(type as Ctor);
       },
       set(value: unknown) {
         Object.defineProperty(this, key, {

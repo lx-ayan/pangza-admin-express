@@ -4,6 +4,7 @@ import {
   assertSafeLastSql,
   escapeLike,
 } from "./security";
+import { getDialect, type Dialect, type DbType } from "./dialect";
 
 export { assertIdent } from "./security";
 
@@ -15,12 +16,18 @@ interface Condition {
   params: unknown[];
 }
 
+export interface QueryWrapperOptions {
+  /** 方言或数据库类型，影响列名引号；默认 mysql */
+  dialect?: Dialect | DbType | string;
+}
+
 /**
  * 条件构造器（对齐 MyBatis-Plus QueryWrapper 常用 API）
  * 列名白名单校验，值一律参数绑定。
  *
  * @example
  * new QueryWrapper().select('id', 'username').eq('status', 1).orderByDesc('id')
+ * new QueryWrapper({ dialect: "postgresql" }).eq("status", 1)
  */
 export class QueryWrapper {
   private conditions: Condition[] = [];
@@ -29,6 +36,28 @@ export class QueryWrapper {
   private lastSqlText = "";
   private nextJoin: JoinType = "AND";
   private skipLogicDelete = false;
+  private readonly dialect: Dialect;
+
+  constructor(options?: QueryWrapperOptions | Dialect | DbType | string) {
+    if (!options) {
+      this.dialect = getDialect("mysql");
+    } else if (typeof options === "string") {
+      this.dialect = getDialect(options);
+    } else if (typeof options === "object" && "quoteIdent" in options) {
+      this.dialect = options as Dialect;
+    } else {
+      const d = (options as QueryWrapperOptions).dialect;
+      if (d && typeof d === "object" && "quoteIdent" in d) {
+        this.dialect = d as Dialect;
+      } else {
+        this.dialect = getDialect((d as DbType | string | undefined) ?? "mysql");
+      }
+    }
+  }
+
+  getDialect(): Dialect {
+    return this.dialect;
+  }
 
   /** 本条查询忽略逻辑删除条件（查回收站等） */
   ignoreLogicDelete(): this {
@@ -42,7 +71,7 @@ export class QueryWrapper {
 
   /** 复制一份，避免 Mapper 追加逻辑删除时改到调用方 */
   clone(): QueryWrapper {
-    const copy = new QueryWrapper();
+    const copy = new QueryWrapper(this.dialect);
     (copy as unknown as { conditions: Condition[] }).conditions =
       this.conditions.map((c) => ({
         join: c.join,
@@ -82,7 +111,7 @@ export class QueryWrapper {
   }
 
   private col(column: string): string {
-    return `\`${assertIdent(column)}\``;
+    return this.dialect.quoteIdent(assertIdent(column));
   }
 
   /**

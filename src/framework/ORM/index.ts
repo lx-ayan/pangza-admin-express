@@ -36,8 +36,17 @@ export {
   DEFAULT_SQL_LOG_FORMAT,
 } from "./sqlLog";
 export { OrmError, OptimisticLockError } from "./errors";
-export { Select, Insert, Update, Delete, Param, MAPPER_ENTITY_KEY } from "./sqlDecorators";
+export {
+  Select,
+  Insert,
+  Update,
+  Delete,
+  Param,
+  MAPPER_ENTITY_KEY,
+} from "./sqlDecorators";
+export type { SqlExecuteOptions, SelectOptions } from "./sqlDecorators";
 export { Transactional } from "./transactional";
+export type { TransactionalOptions } from "./transactional";
 export {
   registerFieldSelect,
   getFieldSelects,
@@ -53,9 +62,23 @@ export {
   TableField,
   getTableName,
   getEntityFields,
+  getEntityIdField,
   getEntityTableMeta,
   applyEntityFieldFills,
 } from "./entityDecorators";
+export { IdType, resolveIdType } from "./IdType";
+export type { IdTypeValue } from "./IdType";
+export {
+  setIdentifierGenerator,
+  getIdentifierGenerator,
+  defaultIdentifierGenerator,
+} from "./identifier";
+export type { IdentifierGenerator } from "./identifier";
+export { mapResultRow, mapResultRows } from "./resultMap";
+export { getDialect } from "./dialect";
+export type { DbType, Dialect } from "./dialect";
+export { DataSource } from "./DataSource";
+export type { DataSourceConfig } from "./DataSource";
 export type {
   MysqlConfig,
   MapperOptions,
@@ -78,17 +101,16 @@ export type {
   EntityTableMeta,
 } from "./entityDecorators";
 
-// 按 .env 自动连接（失败仅打日志，首次 query 会再试）
+// 按 YAML 自动连接默认数据源（失败仅打日志，首次 query 会再试）
 void Db.connect().catch((err: Error) => {
-  // 此时 Logger 可能尚未 registry，降级 console
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { getLogger } = require("@/framework/Logger") as {
       getLogger: (n?: string) => { error: (...a: unknown[]) => void };
     };
-    getLogger("MySQL").error({ err }, "自动连接失败");
+    getLogger("ORM").error({ err }, "默认数据源自动连接失败");
   } catch {
-    console.error("[MySQL] 自动连接失败:", err.message);
+    console.error("[ORM] 默认数据源自动连接失败:", err.message);
   }
 });
 

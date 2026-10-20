@@ -1,8 +1,6 @@
 import { BaseService, Service } from "@/framework/Service";
 import { OrmError, QueryWrapper } from "@/framework/ORM";
 import TableConfigMapper from "@/business/mapper/tableConfig";
-import { rowsToCamel, rowToCamel } from "@/framework/utils/case";
-import { nextId } from "@/framework/utils/id";
 import {
   toPageResult,
   type PageRequest,
@@ -40,7 +38,6 @@ export default class TableConfigService extends BaseService {
       throw new OrmError("当前表名已存在，请勿重复创建");
     }
     await this.insert({
-      id: nextId(),
       tableName: dto.tableName.trim(),
       tableComment: dto.tableComment,
       fieldConfig: this.normalizeFieldConfig(dto.fieldConfig, null),
@@ -58,7 +55,10 @@ export default class TableConfigService extends BaseService {
     if (await this.hasTableName(tableName, id)) {
       throw new OrmError("当前表名已存在，请勿重复创建");
     }
-    const existing = rowToCamel((await this.selectById(id)) as any);
+    const existing = (await this.selectById(id)) as Record<
+      string,
+      unknown
+    > | null;
     await this.updateById({
       ...row,
       id,
@@ -75,7 +75,7 @@ export default class TableConfigService extends BaseService {
   }
 
   async getTableConfig(id: string): Promise<Record<string, unknown> | null> {
-    return rowToCamel((await this.selectById(id)) as any);
+    return (await this.selectById(id)) as Record<string, unknown> | null;
   }
 
   async getTableConfigPage(
@@ -92,7 +92,7 @@ export default class TableConfigService extends BaseService {
     );
     return toPageResult({
       ...page,
-      records: rowsToCamel(page.records as any),
+      records: page.records as Record<string, unknown>[],
     });
   }
 
@@ -102,7 +102,7 @@ export default class TableConfigService extends BaseService {
     const wrapper = this.buildKeywordWrapper(form ?? {});
     wrapper.orderByAsc("sort_num").orderByDesc("create_time");
     const list = await this.selectList(wrapper);
-    return rowsToCamel(list as any);
+    return list as Record<string, unknown>[];
   }
 
   private buildKeywordWrapper(

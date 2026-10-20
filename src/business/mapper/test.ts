@@ -7,7 +7,7 @@ import {
 import TestEntity from "@/business/entity/test";
 
 /** 通过实体类绑定表名 / 主键 / TableField 填充 */
-@Mapper(TestEntity, { fill: true })
+@Mapper(TestEntity)
 class TestMapper extends MapperType {
   @Select(
     "SELECT * FROM ${table} WHERE name = #{name} AND delete_flag = #{flag}"

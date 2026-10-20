@@ -46,7 +46,7 @@ return tonumber(current)
 
 /**
  * Redis 操作封装（基于 node-redis v6）。
- * 配置来自 .env，模块加载及首次调用时自动连接，无需手动 connect。
+ * 配置来自项目根目录 application*.yaml，模块加载及首次调用时自动连接，无需手动 connect。
  *
  * 用法：
  *   await Redis.set('a', '1', 60)
@@ -67,12 +67,12 @@ class Redis {
       await this.connect();
     }
     if (!this.client?.isReady) {
-      throw new Error("Redis 连接不可用，请检查 .env 中的 Redis 配置");
+      throw new Error("Redis 连接不可用，请检查 YAML 中的 redis 配置");
     }
     return this.client;
   }
 
-  /** 覆盖配置（一般不需要，默认已读 .env） */
+  /** 覆盖配置（一般不需要，默认已读 YAML） */
   static configure(config: RedisConfig = {}): void {
     this.config = {
       ...defaultRedisConfig,
@@ -316,7 +316,7 @@ class Redis {
   }
 }
 
-// 按 .env 配置在模块加载时自动连接
+// 按 YAML 配置在模块加载时自动连接
 void Redis.connect().catch((err: Error) => {
   console.error("[Redis] 自动连接失败:", err.message);
 });

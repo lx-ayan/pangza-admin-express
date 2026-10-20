@@ -4,6 +4,7 @@ import {
   getFieldSelects,
   type FieldSelectMeta,
 } from "./fieldSelect";
+import { mapResultRows } from "./resultMap";
 import { parseMybatisSql } from "./sqlTemplate";
 
 export interface HydrateFieldSelectOptions {
@@ -13,6 +14,8 @@ export interface HydrateFieldSelectOptions {
   includeLazy?: boolean;
   /** 只填充指定属性 */
   properties?: string[];
+  /** 默认数据源（字段 @Select 未指定 datasource/db 时使用） */
+  datasource?: string;
 }
 
 function snakeToCamel(key: string): string {
@@ -143,17 +146,36 @@ function childObjects(mapped: unknown): Record<string, unknown>[] {
   );
 }
 
+function resolveHydrateDatasource(
+  meta: FieldSelectMeta,
+  options?: HydrateFieldSelectOptions
+): string {
+  if (meta.datasource?.trim()) return meta.datasource.trim();
+  if (meta.db) return Db.findByType(meta.db);
+  return (options?.datasource ?? "default").trim() || "default";
+}
+
 async function queryIn(
   template: string,
-  ids: unknown[]
+  ids: unknown[],
+  datasource: string
 ): Promise<Record<string, unknown>[]> {
   const all: Record<string, unknown>[] = [];
   const size = 500;
   for (let i = 0; i < ids.length; i += size) {
     const chunk = ids.slice(i, i + size);
     const sql = template.replace("__IN__", chunk.map(() => "?").join(", "));
-    const result = (await Db.query(sql, chunk)) as RowDataPacket[];
-    all.push(...(result as unknown as Record<string, unknown>[]));
+    const result = (await Db.queryOn(
+      datasource,
+      sql,
+      chunk
+    )) as RowDataPacket[];
+    all.push(
+      ...(mapResultRows(result as Record<string, unknown>[]) as Record<
+        string,
+        unknown
+      >[])
+    );
   }
   return all;
 }
@@ -199,11 +221,15 @@ async function hydrateOne(
     metas.map(async (meta) => {
       try {
         const parsed = parseMybatisSql(meta.sql, ctx);
-        const result = (await Db.query(
+        const ds = resolveHydrateDatasource(meta, options);
+        const result = (await Db.queryOn(
+          ds,
           parsed.sql,
           parsed.params
         )) as RowDataPacket[];
-        const rows = result as unknown as Record<string, unknown>[];
+        const rows = mapResultRows(
+          result as unknown as Record<string, unknown>[]
+        );
         const mapped = mapSelectResult(rows, meta);
         row[meta.property] = mapped;
 
@@ -261,7 +287,11 @@ async function hydrateBatch<T extends Record<string, any>>(
   if (ids.length) {
     let queried: Record<string, unknown>[];
     try {
-      queried = await queryIn(plan.template, ids);
+      queried = await queryIn(
+        plan.template,
+        ids,
+        resolveHydrateDatasource(meta, options)
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(

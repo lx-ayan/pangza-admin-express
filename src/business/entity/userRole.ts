@@ -1,9 +1,9 @@
-import { TableField, TableId, TableName } from "@/framework/ORM";
+import { IdType, TableField, TableId, TableName } from "@/framework/ORM";
 
 /** user_role 关联表 */
 @TableName("user_role")
 export default class UserRoleEntity {
-  @TableId()
+  @TableId({ type: IdType.AUTO })
   id?: number;
 
   @TableField({ value: "user_id" })

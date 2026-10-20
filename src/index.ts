@@ -18,7 +18,7 @@ import Redis from "./framework/Redis";
 // 最先配置 pino，后续 getLogger 才绑到同一实例
 Application.registry(Logger({ level: "info" }));
 
-// SQL 日志：也可在 .env 设 ORM_SQL_LOG=true
+// SQL 日志：也可在 application*.yaml 的 orm.sqlLog.enabled 打开
 configureOrm({
   sqlLog: true,
 });

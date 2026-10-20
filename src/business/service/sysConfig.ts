@@ -1,7 +1,6 @@
 import { BaseService, Service } from "@/framework/Service";
 import { OrmError, QueryWrapper } from "@/framework/ORM";
 import SysConfigMapper from "@/business/mapper/sysConfig";
-import { rowsToCamel, rowToCamel } from "@/framework/utils/case";
 import {
   toPageResult,
   type PageRequest,
@@ -33,10 +32,10 @@ export default class SysConfigService extends BaseService {
     const list = await this.selectList(
       new QueryWrapper().eq("public_flag", 1).orderByAsc("sort_num")
     );
-    const rows = rowsToCamel<{
+    const rows = list as Array<{
       configKey?: string;
       configValue?: string;
-    }>(list as any);
+    }>;
     const result: Record<string, string> = {};
     for (const item of rows) {
       if (item.configKey) {
@@ -53,10 +52,10 @@ export default class SysConfigService extends BaseService {
 
   async refreshCache(): Promise<void> {
     const list = await this.selectList(new QueryWrapper());
-    const rows = rowsToCamel<{
+    const rows = list as Array<{
       configKey?: string;
       configValue?: string;
-    }>(list as any);
+    }>;
     this.cache.clear();
     for (const item of rows) {
       if (item.configKey) {
@@ -100,7 +99,7 @@ export default class SysConfigService extends BaseService {
     );
     return toPageResult({
       ...page,
-      records: rowsToCamel(page.records as any),
+      records: page.records as Record<string, unknown>[],
     });
   }
 
@@ -108,7 +107,7 @@ export default class SysConfigService extends BaseService {
     const list = await this.selectList(
       new QueryWrapper().orderByAsc("sort_num").orderByDesc("create_time")
     );
-    return rowsToCamel(list as any);
+    return list as Record<string, unknown>[];
   }
 
   async updateSysConfig(dto: UpdateSysConfigDTO): Promise<void> {

@@ -1,6 +1,8 @@
 import "reflect-metadata";
-import Db, { type ResultSetHeader, type RowDataPacket } from "./Db";
+import Db, { type RowDataPacket } from "./Db";
+import type { DbType } from "./dialect";
 import { registerFieldSelect, type FieldSelectOptions } from "./fieldSelect";
+import { mapResultRows } from "./resultMap";
 import { buildParamContext, parseMybatisSql } from "./sqlTemplate";
 
 const PARAM_NAMES_KEY = Symbol.for("pangza.orm.sqlParamNames");
@@ -8,6 +10,32 @@ const PARAM_NAMES_KEY = Symbol.for("pangza.orm.sqlParamNames");
 export const MAPPER_ENTITY_KEY = Symbol.for("pangza.orm.mapperEntity");
 
 type SqlKind = "select" | "insert" | "update" | "delete";
+
+/** 方法级 SQL 装饰器数据源选项 */
+export interface SqlExecuteOptions {
+  /**
+   * 数据源名称（Db.register 的名字），默认 "default"。
+   * 与 db 同时存在时以 datasource 为准。
+   */
+  datasource?: string;
+  /**
+   * 按已注册数据源的数据库类型查找（mysql / postgresql / sqlserver）。
+   * 同类型有多个时须改用 datasource。
+   */
+  db?: DbType | string;
+}
+
+export type SelectOptions = FieldSelectOptions & SqlExecuteOptions;
+
+function resolveDatasource(options?: SqlExecuteOptions): string {
+  if (options?.datasource?.trim()) {
+    return options.datasource.trim();
+  }
+  if (options?.db) {
+    return Db.findByType(options.db);
+  }
+  return "default";
+}
 
 function getNamedParams(
   target: object,
@@ -40,11 +68,12 @@ export function Param(name: string): ParameterDecorator {
 }
 
 function createSqlMethodDecorator(kind: SqlKind) {
-  return (sql: string): MethodDecorator => {
+  return (sql: string, options?: SqlExecuteOptions): MethodDecorator => {
     if (!sql || !String(sql).trim()) {
       throw new Error(`@${kind[0].toUpperCase()}${kind.slice(1)} SQL 不能为空`);
     }
     const template = String(sql);
+    const datasource = resolveDatasource(options);
 
     return (target, propertyKey, descriptor) => {
       const methodName = String(propertyKey);
@@ -56,18 +85,27 @@ function createSqlMethodDecorator(kind: SqlKind) {
       ): Promise<unknown> {
         const ctx = buildParamContext(args, named());
         const parsed = parseMybatisSql(template, ctx);
-        const result = await Db.query(parsed.sql, parsed.params);
+        const result = await Db.queryOn(datasource, parsed.sql, parsed.params);
 
         if (kind === "select") {
           // 方法级 @Select 常用于批量查询，不自动填字段 @Select，避免 N+1。
-          // 需要时：hydrateFieldSelects(Entity, rows)
-          return result as RowDataPacket[];
+          // 需要时：hydrateFieldSelects(Entity, rows, { datasource })
+          return mapResultRows(
+            (result as RowDataPacket[]) ?? []
+          ) as RowDataPacket[];
         }
-        const header = result as unknown as ResultSetHeader;
+
+        const dialect = Db.getDialect(datasource);
         if (kind === "insert") {
-          return Number(header.insertId ?? 0);
+          // 自定义 INSERT 若含 RETURNING / OUTPUT，优先取第一行第一列
+          if (Array.isArray(result) && result[0] && typeof result[0] === "object") {
+            const row = result[0] as Record<string, unknown>;
+            const first = Object.values(row)[0];
+            if (first != null) return Number(first);
+          }
+          return dialect.extractInsertId(result, "id", false);
         }
-        return Number(header.affectedRows ?? 0);
+        return dialect.extractAffectedRows(result);
       };
 
       if (descriptor) {
@@ -86,25 +124,22 @@ function createSqlMethodDecorator(kind: SqlKind) {
 /**
  * @Select — 方法装饰器或字段装饰器。
  *
- * 方法：执行 SQL，返回行数组（Mapper 上若绑定了实体，会自动填充字段级 @Select）。
+ * 方法：执行 SQL，返回行数组。
  * 字段：查询结果映射到该属性（父行字段可用 #{id} / #{parentId} 等引用）。
  *
  * @example
- * // 方法
  * @Select("SELECT * FROM user WHERE id = #{id}")
  * findById(@Param("id") id: string) {}
  *
- * // 字段（collection）
+ * @Select('SELECT * FROM "user" WHERE id = #{id}', { db: "postgresql" })
+ * findOnPg(@Param("id") id: string) {}
+ *
  * @Select("SELECT * FROM menu WHERE parent_id = #{id}", { many: true })
  * children?: Menu[];
- *
- * // 字段（标量）
- * @Select("SELECT name FROM role WHERE id = (SELECT role_id FROM menu_role WHERE menu_id = #{id} LIMIT 1)", { column: "name" })
- * roleName?: string;
  */
 export function Select(
   sql: string,
-  options?: FieldSelectOptions
+  options?: SelectOptions
 ): MethodDecorator & PropertyDecorator {
   const template = String(sql ?? "").trim();
   if (!template) {
@@ -122,7 +157,7 @@ export function Select(
       descriptor &&
       typeof descriptor.value === "function"
     ) {
-      return createSqlMethodDecorator("select")(template)(
+      return createSqlMethodDecorator("select")(template, options)(
         target,
         propertyKey,
         descriptor
@@ -140,7 +175,10 @@ export function Select(
 
 /**
  * @Insert("INSERT INTO user(name) VALUES(#{name})")
- * 返回 insertId。
+ * 返回 insertId；PostgreSQL / SQL Server 建议在 SQL 中写 RETURNING / OUTPUT。
+ *
+ * @example
+ * @Insert("INSERT INTO user(name) VALUES(#{name})", { datasource: "pg" })
  */
 export const Insert = createSqlMethodDecorator("insert");
 

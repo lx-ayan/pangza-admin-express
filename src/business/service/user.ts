@@ -12,8 +12,7 @@ import { convert } from "@/framework/Json";
 import { Email, Max, Min, NotNull, Phone } from "@/framework/Validate";
 import UserMapper, { type NameAndPermission } from "@/business/mapper/user";
 import UserRoleMapper from "@/business/mapper/userRole";
-import { rowToCamel, rowsToCamel, omitPassword } from "@/framework/utils/case";
-import { nextId } from "@/framework/utils/id";
+import { omitPassword } from "@/framework/utils/case";
 import {
   toPageResult,
   type PageRequest,
@@ -138,8 +137,10 @@ export default class UserService extends BaseService {
       throw new OrmError("参数错误");
     }
     const wrapper = new QueryWrapper().eq("username", dto.username.trim());
-    const raw = await this.selectOne(wrapper);
-    const user = rowToCamel<Record<string, unknown>>(raw as any);
+    const user = (await this.selectOne(wrapper)) as Record<
+      string,
+      unknown
+    > | null;
     if (!user) {
       throw new OrmError("用户名或密码输入错误");
     }
@@ -183,9 +184,7 @@ export default class UserService extends BaseService {
 
     const loginId = await AuthUtil.getLoginId();
     const user = omitPassword(
-      rowToCamel<Record<string, unknown>>(
-        (await this.selectById(loginId)) as any
-      )
+      (await this.selectById(loginId)) as Record<string, unknown> | null
     );
     if (!user) return status;
 
@@ -204,9 +203,7 @@ export default class UserService extends BaseService {
   async getProfile(): Promise<Record<string, unknown>> {
     const loginId = await AuthUtil.getLoginId();
     const user = omitPassword(
-      rowToCamel<Record<string, unknown>>(
-        (await this.selectById(loginId)) as any
-      )
+      (await this.selectById(loginId)) as Record<string, unknown> | null
     );
     if (!user) throw new OrmError("用户不存在");
     return user;
@@ -238,8 +235,10 @@ export default class UserService extends BaseService {
       throw new OrmError("旧密码和新密码不能为空");
     }
     const loginId = await AuthUtil.getLoginId();
-    const raw = await this.selectById(loginId);
-    const user = rowToCamel<Record<string, unknown>>(raw as any);
+    const user = (await this.selectById(loginId)) as Record<
+      string,
+      unknown
+    > | null;
     if (!user) throw new OrmError("用户不存在");
 
     const ok = await bcrypt.compare(
@@ -277,7 +276,7 @@ export default class UserService extends BaseService {
     const page = await this.selectPage(pageQuery, queryWrapper);
     return toPageResult({
       ...page,
-      records: rowsToCamel(page.records as any),
+      records: page.records as Record<string, unknown>[],
     });
   }
 
@@ -292,7 +291,6 @@ export default class UserService extends BaseService {
     }
     const password = await bcrypt.hash("123456", 10);
     await this.insert({
-      id: nextId(),
       ...convert(data, [
         "username",
         "nickName",
@@ -321,7 +319,7 @@ export default class UserService extends BaseService {
 
   async getUser(id: string): Promise<Record<string, unknown> | null> {
     return omitPassword(
-      rowToCamel<Record<string, unknown>>((await this.selectById(id)) as any)
+      (await this.selectById(id)) as Record<string, unknown> | null
     );
   }
 
@@ -329,9 +327,7 @@ export default class UserService extends BaseService {
     const list = await this.userRoleMapper.selectList(
       new QueryWrapper().eq("user_id", id).select("role_id")
     );
-    return rowsToCamel<{ roleId: string }>(list as any).map((r) =>
-      String(r.roleId)
-    );
+    return list.map((r) => String((r as { roleId?: string }).roleId));
   }
 
   async bindUserRole(dto: BindUserRoleDTO): Promise<void> {

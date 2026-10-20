@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { addBeanKey } from "@/framework/Json/beanKeys";
+import { IdType, resolveIdType, type IdTypeValue } from "./IdType";
 
 /** insertFill / updateFill：直接值，或同步/异步函数 */
 export type FieldFillValue =
@@ -10,6 +11,11 @@ export type FieldFillValue =
 export interface TableIdOptions {
   /** 数据库列名，默认用属性名 */
   value?: string;
+  /**
+   * 主键策略，默认 IdType.NONE（跟随全局 ORM_ID_TYPE / configureOrm）。
+   * @see IdType
+   */
+  type?: IdTypeValue;
 }
 
 export interface TableFieldOptions {
@@ -36,6 +42,8 @@ export interface EntityFieldMeta {
   column: string;
   /** 是否主键 */
   id?: boolean;
+  /** 主键策略（仅 id 字段有意义） */
+  idType?: IdType;
   exist: boolean;
   insertFill?: FieldFillValue;
   updateFill?: FieldFillValue;
@@ -79,8 +87,8 @@ export function TableName(tableName: string): ClassDecorator {
 }
 
 /**
- * @TableId() / @TableId("user_id") / @TableId({ value: "user_id" })
- * 标记主键字段。
+ * @TableId() / @TableId("user_id") / @TableId({ value: "user_id", type: IdType.ASSIGN_ID })
+ * 标记主键字段及生成策略。
  */
 export function TableId(
   valueOrOptions?: string | TableIdOptions
@@ -88,19 +96,29 @@ export function TableId(
   return (target, propertyKey) => {
     const property = String(propertyKey);
     let column = property;
+    let idType = IdType.NONE;
     if (typeof valueOrOptions === "string") {
       column = valueOrOptions || property;
-    } else if (valueOrOptions?.value) {
-      column = valueOrOptions.value;
+    } else if (valueOrOptions) {
+      if (valueOrOptions.value) column = valueOrOptions.value;
+      if (valueOrOptions.type != null) {
+        idType = resolveIdType(valueOrOptions.type);
+      }
     }
     const ctor = (target as object).constructor;
     saveField(ctor, {
       property,
       column,
       id: true,
+      idType,
       exist: true,
     });
   };
+}
+
+/** 读取实体主键字段元数据（含 IdType） */
+export function getEntityIdField(entity: Ctor): EntityFieldMeta | undefined {
+  return getEntityFields(entity).find((f) => f.id);
 }
 
 /**
@@ -124,6 +142,7 @@ export function TableField(
       property,
       column: options.value || property,
       id: prev?.id,
+      idType: prev?.idType,
       exist: options.exist !== false,
       insertFill: options.insertFill,
       updateFill: options.updateFill,

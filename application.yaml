@@ -1,0 +1,73 @@
+# 公共配置。按环境再叠加根目录 application-{profile}.yaml
+# profile：PANGZA_PROFILE / APP_ENV / NODE_ENV，未设置时为 development
+# 生产外部文件（最后覆盖）：CONFIG_PATH=/etc/pangza/application.yaml
+# 或 node dist/index.js --config /etc/pangza/application.yaml
+
+server:
+  port: 3990 # HTTP 监听端口
+
+redis:
+  host: 127.0.0.1 # Redis 主机
+  port: 6379 # Redis 端口
+  password: "" # Redis 密码，空表示无密码
+  db: 0 # Redis 库序号
+  keyPrefix: "pangza:" # 所有 key 的前缀
+
+upload:
+  path: upload # 上传文件保存目录，相对路径相对项目根目录
+  urlPrefix: /files # 静态访问前缀，例如 /files/a.png
+
+datasource:
+  # 主库，注册名为 default；未指定 datasource 的 Mapper / SQL 都走它
+  default:
+    type: mysql # 库类型：mysql / postgresql / sqlserver
+    host: 127.0.0.1 # 主机
+    port: 3306 # 端口；不写时按类型默认 3306 / 5432 / 1433
+    user: root # 用户名
+    password: "" # 密码
+    database: pangza # 库名
+    connectionLimit: 10 # 连接池大小
+  # 附加 PostgreSQL。host 为空则不注册；也可写 enabled: false。注册名固定为 postgresql
+  postgresql:
+    type: postgresql # 库类型
+    host: "" # 主机；留空表示不启用
+    port: 5432 # 端口
+    user: postgres # 用户名
+    password: "" # 密码
+    database: pangza # 库名
+    connectionLimit: 10 # 连接池大小
+  # 附加 SQL Server。host 为空则不注册。注册名固定为 sqlserver
+  sqlserver:
+    type: sqlserver # 库类型
+    host: "" # 主机；留空表示不启用
+    port: 1433 # 端口
+    user: sa # 用户名
+    password: "" # 密码
+    database: pangza # 库名
+    connectionLimit: 10 # 连接池大小
+
+orm:
+  logicDelete: true # 全局逻辑删除；关联表可在 @Mapper 上设 logicDelete: false
+  logicDeleteField: delete_flag # 逻辑删除标记列名
+  logicDeleteValue: 1 # 已删除时写入的值
+  logicNotDeleteValue: 0 # 未删除时的值，查询会自动加上该条件
+  optimisticLock: false # 全局乐观锁
+  versionField: version # 乐观锁版本列名
+  idType: ASSIGN_ID # 全局主键：ASSIGN_ID（雪花）/ AUTO / INPUT / ASSIGN_UUID / NONE
+  mapUnderscoreToCamelCase: true # 查询结果列名下划线转驼峰，如 create_time → createTime
+  workerId: 1 # 雪花算法机器号，0–1023；多实例部署时请区分
+  fill:
+    createTime: create_time # 插入时自动填充的创建时间列
+    updateTime: update_time # 插入和更新时自动填充的更新时间列
+    createBy: create_by # 插入时自动填充的创建人列
+    updateBy: update_by # 插入和更新时自动填充的更新人列
+  sqlLog:
+    enabled: false # 是否打印 SQL
+    level: info # 日志级别：trace / debug / info / warn
+    format: "{time} [{type}] {cost}ms | {sql} | params={params}" # 模板，占位符 {time} {type} {sql} {params} {cost}
+    parts:
+      time: true # 是否输出时间
+      type: true # 是否输出 SQL 类型（SELECT / INSERT 等）
+      sql: true # 是否输出语句
+      params: true # 是否输出参数
+      cost: true # 是否输出耗时

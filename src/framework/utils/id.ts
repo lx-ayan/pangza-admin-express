@@ -1,9 +1,10 @@
-/** 简易雪花风格 ID（字符串），对齐 Java ASSIGN_ID 用法 */
-let seq = 0;
+import { getIdentifierGenerator } from "@/framework/ORM/identifier";
 
+/**
+ * @deprecated 请用实体 `@TableId({ type: IdType.ASSIGN_ID })`（全局默认已是 ASSIGN_ID），
+ * insert 时自动生成；或 `getIdentifierGenerator().nextId()`。
+ */
 export function nextId(): string {
-  const now = BigInt(Date.now());
-  seq = (seq + 1) % 4096;
-  const id = (now << 12n) | BigInt(seq);
-  return id.toString();
+  const id = getIdentifierGenerator().nextId();
+  return typeof id === "string" ? id : String(id);
 }

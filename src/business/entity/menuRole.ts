@@ -1,9 +1,9 @@
-import { TableField, TableId, TableName } from "@/framework/ORM";
+import { IdType, TableField, TableId, TableName } from "@/framework/ORM";
 
 /** menu_role 关联表 */
 @TableName("menu_role")
 export default class MenuRoleEntity {
-  @TableId()
+  @TableId({ type: IdType.AUTO })
   id?: number;
 
   @TableField({ value: "menu_id" })

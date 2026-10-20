@@ -1,8 +1,6 @@
 import { BaseService, Container, Service } from "@/framework/Service";
 import { OrmError, QueryWrapper } from "@/framework/ORM";
 import SysScheduleMapper from "@/business/mapper/sysSchedule";
-import { rowsToCamel, rowToCamel } from "@/framework/utils/case";
-import { nextId } from "@/framework/utils/id";
 import {
   toPageResult,
   type PageRequest,
@@ -63,12 +61,12 @@ export default class SysScheduleService extends BaseService {
     );
     return toPageResult({
       ...page,
-      records: rowsToCamel(page.records as any),
+      records: page.records as Record<string, unknown>[],
     });
   }
 
   async getSchedule(id: string): Promise<Record<string, unknown>> {
-    const row = rowToCamel((await this.selectById(id)) as any);
+    const row = (await this.selectById(id)) as Record<string, unknown> | null;
     if (!row) throw new OrmError("定时任务不存在");
     return row;
   }
@@ -81,9 +79,7 @@ export default class SysScheduleService extends BaseService {
     validateCron(dto.cron.trim());
 
     const status = dto.status == null ? 1 : Number(dto.status);
-    const id = nextId();
-    const entity = {
-      id,
+    const entity: Record<string, unknown> = {
       title: dto.title.trim(),
       cron: dto.cron.trim(),
       beanName: dto.beanName.trim(),
@@ -92,10 +88,10 @@ export default class SysScheduleService extends BaseService {
     };
     await this.insert(entity);
     ScheduleManager.scheduleJob({
-      id,
-      title: entity.title,
-      cron: entity.cron,
-      beanName: entity.beanName,
+      id: String(entity.id),
+      title: String(entity.title),
+      cron: String(entity.cron),
+      beanName: String(entity.beanName),
       status,
     });
   }

@@ -8,8 +8,6 @@ import {
 } from "@/framework/ORM";
 import RoleMapper from "@/business/mapper/role";
 import MenuRoleMapper from "@/business/mapper/menuRole";
-import { rowsToCamel, rowToCamel } from "@/framework/utils/case";
-import { nextId } from "@/framework/utils/id";
 import {
   toPageResult,
   type PageRequest,
@@ -54,7 +52,7 @@ export default class RoleService extends BaseService {
     const page = await this.selectPage(pageQuery, queryWrapper);
     return toPageResult({
       ...page,
-      records: rowsToCamel(page.records as any),
+      records: page.records as Record<string, unknown>[],
     });
   }
 
@@ -66,7 +64,6 @@ export default class RoleService extends BaseService {
       throw new OrmError("当前角色已存在，请勿重复创建");
     }
     await this.insert({
-      id: nextId(),
       name: dto.name.trim(),
       nameZh: dto.nameZh.trim(),
       description: dto.description,
@@ -103,23 +100,21 @@ export default class RoleService extends BaseService {
   }
 
   async getRole(id: string): Promise<Record<string, unknown> | null> {
-    return rowToCamel((await this.selectById(id)) as any);
+    return (await this.selectById(id)) as Record<string, unknown> | null;
   }
 
   async getRoleMenuIds(id: string): Promise<string[]> {
     const list = await this.menuRoleMapper.selectList(
       new QueryWrapper().eq("role_id", id).select("menu_id")
     );
-    return rowsToCamel<{ menuId: string }>(list as any).map((r) =>
-      String(r.menuId)
-    );
+    return list.map((r) => String((r as { menuId?: string }).menuId));
   }
 
   async getRoleList(): Promise<Record<string, unknown>[]> {
     const list = await this.selectList(
       new QueryWrapper().select("id", "name", "name_zh", "description")
     );
-    return rowsToCamel(list as any);
+    return list as Record<string, unknown>[];
   }
 
   private async hasRole(

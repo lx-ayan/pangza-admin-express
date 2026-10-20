@@ -1,0 +1,12 @@
+# 本地开发。NODE_ENV 未设置时也会加载，同名字段覆盖 application.yaml
+
+server:
+  port: 5270 # 本地 HTTP 端口
+
+redis:
+  db: 1 # 开发环境使用的 Redis 库，避免和默认 0 号库混用
+
+datasource:
+  default:
+    password: "123456" # 本地 MySQL 密码
+    database: pangza_admin # 本地库名

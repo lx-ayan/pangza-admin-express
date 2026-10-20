@@ -26,6 +26,10 @@ export interface FieldSelectOptions {
    * 含子查询或 LIMIT 的仍逐行查。树形全表加载建议 eager:false，再手动 hydrate。
    */
   eager?: boolean;
+  /** 数据源名称；不传则跟随 hydrate / Mapper 的 datasource */
+  datasource?: string;
+  /** 按数据库类型查找数据源（同类型多源时须用 datasource） */
+  db?: string;
 }
 
 export interface FieldSelectMeta {
@@ -35,6 +39,8 @@ export interface FieldSelectMeta {
   column?: string;
   depth: number;
   eager: boolean;
+  datasource?: string;
+  db?: string;
 }
 
 const FIELD_SELECT_KEY = Symbol.for("pangza.orm.fieldSelect");
@@ -70,6 +76,8 @@ export function registerFieldSelect(
       column: options.column?.trim() || undefined,
       depth: Math.max(0, options.depth ?? 0),
       eager: options.eager !== false,
+      datasource: options.datasource?.trim() || undefined,
+      db: options.db?.trim() || undefined,
     },
   };
   Reflect.defineMetadata(FIELD_SELECT_KEY, map, ctor);

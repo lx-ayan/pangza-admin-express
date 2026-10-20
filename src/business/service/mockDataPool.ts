@@ -1,8 +1,6 @@
 import { BaseService, Service } from "@/framework/Service";
 import { OrmError, QueryWrapper } from "@/framework/ORM";
 import MockDataPoolMapper from "@/business/mapper/mockDataPool";
-import { rowsToCamel, rowToCamel } from "@/framework/utils/case";
-import { nextId } from "@/framework/utils/id";
 import {
   toPageResult,
   type PageRequest,
@@ -39,7 +37,6 @@ export default class MockDataPoolService extends BaseService {
       throw new OrmError("当前数据名称已存在，请勿重复创建");
     }
     await this.insert({
-      id: nextId(),
       name: dto.name.trim(),
       description: dto.description,
       dataContent: this.normalizeDataContent(dto.dataContent),
@@ -70,7 +67,7 @@ export default class MockDataPoolService extends BaseService {
   }
 
   async getMockDataPool(id: string): Promise<Record<string, unknown> | null> {
-    return rowToCamel((await this.selectById(id)) as any);
+    return (await this.selectById(id)) as Record<string, unknown> | null;
   }
 
   async getMockDataPoolPage(
@@ -93,7 +90,7 @@ export default class MockDataPoolService extends BaseService {
     );
     return toPageResult({
       ...page,
-      records: rowsToCamel(page.records as any),
+      records: page.records as Record<string, unknown>[],
     });
   }
 
@@ -108,7 +105,7 @@ export default class MockDataPoolService extends BaseService {
     }
     wrapper.orderByAsc("sort_num").orderByDesc("create_time");
     const list = await this.selectList(wrapper);
-    return rowsToCamel(list as any);
+    return list as Record<string, unknown>[];
   }
 
   async generateMockData(name: string): Promise<GenerateMockDataVO> {
@@ -117,7 +114,7 @@ export default class MockDataPoolService extends BaseService {
       new QueryWrapper().eq("name", name.trim())
     );
     if (!list.length) throw new OrmError("数据不存在");
-    const row = rowToCamel(list[0] as any) as { dataContent?: string };
+    const row = list[0] as { dataContent?: string };
     const values = this.parseDataContent(String(row.dataContent ?? ""));
     if (!values.length) {
       throw new OrmError("当前数据池为空，无法生成");

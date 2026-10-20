@@ -1,0 +1,17 @@
+# 生产环境：NODE_ENV=production（或 prod）时叠加，同名字段覆盖 application.yaml
+# 密钥建议不要放进仓库，改用外部文件最后覆盖：
+#   CONFIG_PATH=/etc/pangza/application.yaml
+#   node dist/index.js --config /etc/pangza/application.yaml
+
+server:
+  port: 3990 # 生产 HTTP 端口
+
+datasource:
+  default:
+    host: 127.0.0.1 # 生产数据库主机，部署时改成实际地址
+    password: "" # 生产数据库密码，建议放到 CONFIG_PATH 指向的外部文件
+    database: pangza_admin # 生产库名
+
+orm:
+  sqlLog:
+    enabled: false # 生产默认不打印 SQL

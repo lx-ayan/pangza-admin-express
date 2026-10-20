@@ -1,10 +1,18 @@
-import Db, { type ResultSetHeader, type RowDataPacket } from "./Db";
+import Db, { type RowDataPacket } from "./Db";
+import type { Dialect } from "./dialect";
 import { getOrmConfig } from "./config";
-import { applyEntityFieldFills, getEntityFields } from "./entityDecorators";
+import {
+  applyEntityFieldFills,
+  getEntityFields,
+  getEntityIdField,
+} from "./entityDecorators";
 import { OptimisticLockError } from "./errors";
 import { applyInsertFill, applyUpdateFill } from "./fill";
 import { hydrateFieldSelects } from "./hydrate";
+import { getIdentifierGenerator } from "./identifier";
+import { IdType, resolveIdType } from "./IdType";
 import { QueryWrapper } from "./QueryWrapper";
+import { mapResultRows } from "./resultMap";
 import { assertIdent, assertSafeUint } from "./security";
 import type {
   IPage,
@@ -16,6 +24,7 @@ import type {
 interface MapperRuntime {
   table: string;
   idField: string;
+  datasource: string;
   /** 表级显式开关；undefined 表示跟随全局 getOrmConfig() */
   logicDeleteExplicit?: boolean;
   logicDeleteField: string;
@@ -33,12 +42,15 @@ interface MapperRuntime {
  */
 export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
   private readonly opts: MapperRuntime;
+  private readonly dialect: Dialect;
 
   constructor(options: MapperOptions) {
     const global = getOrmConfig();
+    const datasource = (options.datasource ?? "default").trim() || "default";
     this.opts = {
       table: assertIdent(options.table),
       idField: assertIdent(options.idField ?? "id"),
+      datasource,
       logicDeleteExplicit: options.logicDelete,
       logicDeleteField: assertIdent(
         options.logicDeleteField ?? global.logicDeleteField
@@ -54,6 +66,18 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
       fill: options.fill ?? true,
       entity: options.entity,
     };
+    this.dialect = Db.getDialect(datasource);
+  }
+
+  private async query<R = unknown>(
+    sql: string,
+    params: unknown[] = []
+  ): Promise<R> {
+    return Db.queryOn<R>(this.opts.datasource, sql, params);
+  }
+
+  private async tx<R>(fn: () => Promise<R>): Promise<R> {
+    return Db.transactionOn(this.opts.datasource, fn);
   }
 
   private cfg(): ResolvedOrmConfig {
@@ -80,15 +104,15 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
   }
 
   private tableSql() {
-    return `\`${this.opts.table}\``;
+    return this.dialect.quoteIdent(this.opts.table);
   }
 
   private idSql() {
-    return `\`${this.opts.idField}\``;
+    return this.dialect.quoteIdent(this.opts.idField);
   }
 
   private colSql(name: string) {
-    return `\`${assertIdent(name)}\``;
+    return this.dialect.quoteIdent(assertIdent(name));
   }
 
   /**
@@ -124,10 +148,12 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
 
   private async getColumnNames(): Promise<Set<string>> {
     if (this.columnNames) return this.columnNames;
-    const rows = await Db.query<RowDataPacket[]>(
-      `SHOW COLUMNS FROM ${this.tableSql()}`
-    );
-    this.columnNames = new Set(rows.map((r) => String(r.Field)));
+    const { sql, params } = this.dialect.listColumnsSql(this.opts.table);
+    const rows = (await this.query(sql, params)) as RowDataPacket[];
+    const names = this.dialect
+      .parseColumnNames(rows as Record<string, unknown>[])
+      .filter(Boolean);
+    this.columnNames = new Set(names);
     return this.columnNames;
   }
 
@@ -153,14 +179,14 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     const field = this.opts.logicDeleteField;
     if (!cols.has(field)) {
       throw new Error(
-        `[ORM] 表 \`${this.opts.table}\` 没有逻辑删除字段 \`${field}\`。请先加列，或在 @Mapper 上设置 logicDelete: false`
+        `[ORM] 表 ${this.tableSql()} 没有逻辑删除字段 ${this.colSql(field)}。请先加列，或在 @Mapper 上设置 logicDelete: false`
       );
     }
   }
 
   /** 追加未删除条件（不修改调用方 wrapper） */
   private withLogic(wrapper?: QueryWrapper): QueryWrapper {
-    const src = wrapper ?? new QueryWrapper();
+    const src = wrapper ?? new QueryWrapper(this.dialect);
     if (!this.isLogicDelete() || src.isIgnoreLogicDelete()) {
       return src;
     }
@@ -169,10 +195,14 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
       .eq(this.opts.logicDeleteField, this.opts.logicNotDeleteValue);
   }
 
+  private hydrateOpts() {
+    return { datasource: this.opts.datasource };
+  }
+
   /** 按主键查询 */
   async selectById(id: string | number): Promise<T | null> {
     return this.selectOne(
-      new QueryWrapper().eq(this.opts.idField, id)
+      new QueryWrapper(this.dialect).eq(this.opts.idField, id)
     );
   }
 
@@ -189,10 +219,14 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     let sql = `SELECT ${frag.selectSql} FROM ${this.tableSql()} ${frag.whereSql} ${frag.orderSql} ${frag.lastSql}`.trim();
     const params = [...frag.params];
     if (limit != null) {
-      sql += ` LIMIT ${assertSafeUint(limit, "limit")}`;
+      const n = assertSafeUint(limit, "limit");
+      const hasOrder = /\bORDER\s+BY\b/i.test(sql);
+      sql = this.dialect.appendLimitOffset(sql, n, 0, hasOrder);
     }
-    const rows = await Db.query<RowDataPacket[]>(sql, params);
-    return hydrateFieldSelects(this.opts.entity, rows as T[]);
+    const rows = mapResultRows(
+      (await this.query<RowDataPacket[]>(sql, params)) as T[]
+    );
+    return hydrateFieldSelects(this.opts.entity, rows, this.hydrateOpts());
   }
 
   /** 条件计数 */
@@ -200,8 +234,8 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     await this.assertLogicDeleteColumn();
     const frag = this.withLogic(wrapper).build();
     const sql = `SELECT COUNT(1) AS cnt FROM ${this.tableSql()} ${frag.whereSql} ${frag.lastSql}`.trim();
-    const rows = await Db.query<RowDataPacket[]>(sql, frag.params);
-    return Number(rows[0]?.cnt ?? 0);
+    const rows = await this.query<RowDataPacket[]>(sql, frag.params);
+    return Number(rows[0]?.cnt ?? rows[0]?.CNT ?? 0);
   }
 
   /** 分页查询 */
@@ -218,26 +252,122 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     const whereOrder = `${frag.whereSql} ${frag.orderSql} ${frag.lastSql}`.trim();
 
     const countSql = `SELECT COUNT(1) AS cnt FROM ${this.tableSql()} ${frag.whereSql} ${frag.lastSql}`.trim();
-    const listSql = `SELECT ${frag.selectSql} FROM ${this.tableSql()} ${whereOrder} LIMIT ${size} OFFSET ${offset}`.trim();
+    let listSql = `SELECT ${frag.selectSql} FROM ${this.tableSql()} ${whereOrder}`.trim();
+    const hasOrder = /\bORDER\s+BY\b/i.test(listSql);
+    listSql = this.dialect.appendLimitOffset(listSql, size, offset, hasOrder);
 
     const [countRows, listRows] = await Promise.all([
-      Db.query<RowDataPacket[]>(countSql, frag.params),
-      Db.query<RowDataPacket[]>(listSql, frag.params),
+      this.query<RowDataPacket[]>(countSql, frag.params),
+      this.query<RowDataPacket[]>(listSql, frag.params),
     ]);
 
+    const records = mapResultRows(listRows as T[]);
     return {
-      records: await hydrateFieldSelects(this.opts.entity, listRows as T[]),
-      total: Number(countRows[0]?.cnt ?? 0),
+      records: await hydrateFieldSelects(
+        this.opts.entity,
+        records,
+        this.hydrateOpts()
+      ),
+      total: Number(countRows[0]?.cnt ?? countRows[0]?.CNT ?? 0),
       current,
       size,
     };
   }
 
-  /** 插入，返回自增 id（若有） */
+  /** 解析有效主键策略 */
+  private resolveIdType(): IdType {
+    const idMeta = this.opts.entity
+      ? getEntityIdField(this.opts.entity)
+      : undefined;
+    const annotated = idMeta?.idType ?? IdType.NONE;
+    if (annotated !== IdType.NONE) return annotated;
+    return resolveIdType(this.cfg().idType ?? IdType.AUTO);
+  }
+
+  /** 插入前按 IdType 填充 / 剥离主键 */
+  private async applyIdOnInsert(
+    row: Record<string, any>,
+    entity?: Partial<T>
+  ): Promise<void> {
+    const idType = this.resolveIdType();
+    const col = this.opts.idField;
+    const prop =
+      this.opts.entity != null
+        ? (getEntityIdField(this.opts.entity)?.property ?? col)
+        : col;
+    const current =
+      row[col] !== undefined
+        ? row[col]
+        : row[prop] !== undefined
+          ? row[prop]
+          : entity?.[prop as keyof T] ?? entity?.[col as keyof T];
+
+    if (idType === IdType.AUTO) {
+      // 数据库自增：不写入 id 列（已有值则保留，兼容显式指定）
+      if (current === undefined || current === null || current === "") {
+        delete row[col];
+        if (prop !== col) delete row[prop];
+      }
+      return;
+    }
+
+    if (idType === IdType.INPUT) {
+      return;
+    }
+
+    if (current !== undefined && current !== null && current !== "") {
+      row[col] = current;
+      return;
+    }
+
+    const gen = getIdentifierGenerator();
+    if (idType === IdType.ASSIGN_ID) {
+      row[col] = await gen.nextId(entity);
+      return;
+    }
+    if (idType === IdType.ASSIGN_UUID) {
+      row[col] = await gen.nextUUID(entity);
+    }
+  }
+
+  /** 把生成的主键回写到原始实体 */
+  private writeBackId(
+    entity: Partial<T>,
+    normalized: Record<string, any>,
+    insertId: number
+  ): void {
+    const col = this.opts.idField;
+    const prop =
+      this.opts.entity != null
+        ? (getEntityIdField(this.opts.entity)?.property ?? col)
+        : col;
+    const idType = this.resolveIdType();
+    let value: unknown = normalized[col];
+    if (
+      (value === undefined || value === null) &&
+      idType === IdType.AUTO &&
+      insertId
+    ) {
+      value = insertId;
+    }
+    if (value === undefined || value === null) return;
+    (entity as Record<string, unknown>)[prop] = value;
+    if (prop !== col) {
+      (entity as Record<string, unknown>)[col] = value;
+    }
+  }
+
+  /** 插入，返回自增 id（若有）；ASSIGN_* 时尽量回写实体并返回可解析的数字 */
   async insert(entity: Partial<T>): Promise<number> {
     await this.assertLogicDeleteColumn();
     const normalized = await this.prepareInsertRow(entity);
-    return this.insertOne(normalized);
+    const insertId = await this.insertOne(normalized);
+    this.writeBackId(entity, normalized, insertId);
+    const back = (entity as Record<string, unknown>)[this.opts.idField];
+    if (insertId) return insertId;
+    if (typeof back === "number") return back;
+    if (typeof back === "string" && /^\d+$/.test(back)) return Number(back);
+    return 0;
   }
 
   /**
@@ -251,10 +381,13 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     if (list.length === 0) return 0;
 
     await this.assertLogicDeleteColumn();
-    return Db.transaction(async () => {
+    return this.tx(async () => {
       const rows: Record<string, any>[] = [];
       for (const entity of list) {
-        rows.push(await this.prepareInsertRow(entity));
+        const normalized = await this.prepareInsertRow(entity);
+        rows.push(normalized);
+        // ASSIGN_* 已写入 normalized，回写实体；AUTO 批量不回填单条 id
+        this.writeBackId(entity, normalized, 0);
       }
 
       const batchSize = 200;
@@ -272,6 +405,7 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     const row = { ...entity } as Record<string, any>;
     await applyInsertFill(row, this.cfg(), this.opts.fill);
     await applyEntityFieldFills(this.opts.entity, row, "insert");
+    await this.applyIdOnInsert(row, entity);
     await this.stripMissingFillFields(row);
     const normalized = this.normalizeEntityRow(row);
 
@@ -298,12 +432,17 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
       throw new Error("insert 实体不能为空");
     }
     const safeKeys = keys.map(assertIdent);
-    const cols = safeKeys.map((k) => `\`${k}\``).join(", ");
+    const cols = safeKeys.map((k) => this.dialect.quoteIdent(k)).join(", ");
     const placeholders = safeKeys.map(() => "?").join(", ");
     const values = safeKeys.map((k) => normalized[k]);
-    const sql = `INSERT INTO ${this.tableSql()} (${cols}) VALUES (${placeholders})`;
-    const result = await Db.query<ResultSetHeader>(sql, values);
-    return Number(result.insertId ?? 0);
+    const baseSql = `INSERT INTO ${this.tableSql()} (${cols}) VALUES (${placeholders})`;
+    const prepared = this.dialect.prepareInsert(baseSql, this.opts.idField);
+    const result = await this.query(prepared.sql, values);
+    return this.dialect.extractInsertId(
+      result,
+      this.opts.idField,
+      prepared.returning
+    );
   }
 
   /** 多行同一列集合；缺省列写 NULL */
@@ -319,7 +458,7 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
       throw new Error("saveBatch 实体不能为空");
     }
     const safeKeys = keys.map(assertIdent);
-    const cols = safeKeys.map((k) => `\`${k}\``).join(", ");
+    const cols = safeKeys.map((k) => this.dialect.quoteIdent(k)).join(", ");
     const rowPlaceholder = `(${safeKeys.map(() => "?").join(", ")})`;
     const values: unknown[] = [];
     for (const row of rows) {
@@ -330,8 +469,8 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     const sql = `INSERT INTO ${this.tableSql()} (${cols}) VALUES ${rows
       .map(() => rowPlaceholder)
       .join(", ")}`;
-    const result = await Db.query<ResultSetHeader>(sql, values);
-    return Number(result.affectedRows ?? 0);
+    const result = await this.query(sql, values);
+    return this.dialect.extractAffectedRows(result);
   }
 
   /** 按主键更新（忽略 undefined 字段） */
@@ -384,11 +523,8 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     }
 
     const sql = `UPDATE ${this.tableSql()} SET ${sets.join(", ")} WHERE ${where}`;
-    const result = await Db.query<ResultSetHeader>(sql, [
-      ...values,
-      ...whereParams,
-    ]);
-    const affected = Number(result.affectedRows ?? 0);
+    const result = await this.query(sql, [...values, ...whereParams]);
+    const affected = this.dialect.extractAffectedRows(result);
     if (version !== undefined && affected === 0) {
       throw new OptimisticLockError();
     }
@@ -434,11 +570,8 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     }
 
     const sql = `UPDATE ${this.tableSql()} SET ${sets.join(", ")} ${whereSql} ${frag.lastSql}`.trim();
-    const result = await Db.query<ResultSetHeader>(sql, [
-      ...values,
-      ...params,
-    ]);
-    const affected = Number(result.affectedRows ?? 0);
+    const result = await this.query(sql, [...values, ...params]);
+    const affected = this.dialect.extractAffectedRows(result);
     if (version !== undefined && affected === 0) {
       throw new OptimisticLockError();
     }
@@ -460,15 +593,15 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
 
     await this.assertLogicDeleteColumn();
     const batchSize = 500;
-    return Db.transaction(async () => {
+    return this.tx(async () => {
       let affected = 0;
       for (let i = 0; i < list.length; i += batchSize) {
         const chunk = list.slice(i, i + batchSize);
         const placeholders = chunk.map(() => "?").join(", ");
         if (!this.isLogicDelete()) {
           const sql = `DELETE FROM ${this.tableSql()} WHERE ${this.idSql()} IN (${placeholders})`;
-          const result = await Db.query<ResultSetHeader>(sql, chunk);
-          affected += Number(result.affectedRows ?? 0);
+          const result = await this.query(sql, chunk);
+          affected += this.dialect.extractAffectedRows(result);
           continue;
         }
         const nd = this.notDeletedClause();
@@ -490,8 +623,8 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     }
     if (!this.isLogicDelete()) {
       const sql = `DELETE FROM ${this.tableSql()} ${frag.whereSql} ${frag.lastSql}`.trim();
-      const result = await Db.query<ResultSetHeader>(sql, frag.params);
-      return Number(result.affectedRows ?? 0);
+      const result = await this.query(sql, frag.params);
+      return this.dialect.extractAffectedRows(result);
     }
     return this.logicDeleteBy(
       frag.whereSql.replace(/^WHERE\s+/i, ""),
@@ -514,10 +647,7 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     const sets = keys.map((k) => `${this.colSql(k)} = ?`).join(", ");
     const values = keys.map((k) => patch[k]);
     const sql = `UPDATE ${this.tableSql()} SET ${sets} WHERE ${whereBody}`;
-    const result = await Db.query<ResultSetHeader>(sql, [
-      ...values,
-      ...whereParams,
-    ]);
-    return Number(result.affectedRows ?? 0);
+    const result = await this.query(sql, [...values, ...whereParams]);
+    return this.dialect.extractAffectedRows(result);
   }
 }

@@ -1,4 +1,4 @@
-/** MySQL connection config */
+/** 兼容：单库 MySQL 连接配置（也可用作 DataSourceConfig） */
 export interface MysqlConfig {
   host?: string;
   port?: number;
@@ -8,12 +8,17 @@ export interface MysqlConfig {
   connectionLimit?: number;
 }
 
-/** BaseMapper 表级配置（可覆盖全局 .env / configureOrm） */
+/** BaseMapper 表级配置（可覆盖全局 YAML / configureOrm） */
 export interface MapperOptions {
   /** 表名 */
   table: string;
   /** 主键，默认 id */
   idField?: string;
+  /**
+   * 数据源名称（Db.register 的名字），默认 "default"。
+   * 多库 / 多数据源时在此指定。
+   */
+  datasource?: string;
   /** 是否开启逻辑删除 */
   logicDelete?: boolean;
   /** 逻辑删除字段名 */
@@ -46,6 +51,16 @@ export interface ResolvedOrmConfig {
   logicNotDeleteValue: unknown;
   optimisticLock: boolean;
   versionField: string;
+  /**
+   * 全局主键策略（@TableId type 为 NONE 时使用）。
+   * 默认 ASSIGN_ID（雪花字符串）。
+   */
+  idType?: string;
+  /**
+   * 查询结果下划线列名转驼峰（对齐 MyBatis mapUnderscoreToCamelCase）。
+   * 默认 true。
+   */
+  mapUnderscoreToCamelCase?: boolean;
   fillCreateTime?: string;
   fillUpdateTime?: string;
   fillCreateBy?: string;

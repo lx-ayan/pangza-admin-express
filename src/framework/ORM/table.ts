@@ -18,6 +18,7 @@ function cacheKey(options: MapperOptions): string {
   return JSON.stringify({
     table: options.table,
     idField: options.idField ?? "id",
+    datasource: options.datasource ?? "default",
     logicDelete: options.logicDelete ?? null,
     logicDeleteField: options.logicDeleteField ?? null,
     logicDeleteValue: options.logicDeleteValue ?? null,

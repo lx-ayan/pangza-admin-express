@@ -1,7 +1,7 @@
 import { Mapper, MapperType, Param, Select } from "@/framework/Service";
 import MenuEntity from "@/business/entity/menu";
 
-@Mapper(MenuEntity, { logicDelete: true, fill: true })
+@Mapper(MenuEntity)
 export default class MenuMapper extends MapperType {
   /** 全量未删除菜单，按 sort_num 排序（内存组树） */
   @Select(

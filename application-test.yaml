@@ -1,0 +1,5 @@
+# 测试环境：NODE_ENV=test 时叠加，同名字段覆盖 application.yaml
+
+datasource:
+  default:
+    database: pangza # 测试使用的库名

@@ -14,7 +14,7 @@
 
 ```bash
 npm install
-cp .env.example .env   # 配置 MySQL / Redis 等
+# 编辑根目录 application.yaml 与 application-development.yaml
 npm run dev
 ```
 

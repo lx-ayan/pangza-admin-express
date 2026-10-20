@@ -59,6 +59,22 @@ class AppContainer {
     this.raw.bind(key).toService(ctor);
   }
 
+  /**
+   * 绑定常量（@Bean 工厂返回值）。
+   * Token 可以是类、字符串或 Symbol。
+   */
+  bindConstant<T>(
+    id: ServiceIdentifier | Ctor | string | symbol,
+    value: T
+  ): void {
+    const key = id as ServiceIdentifier;
+    if (this.raw.isBound(key)) {
+      this.raw.rebind(key).toConstantValue(value);
+      return;
+    }
+    this.raw.bind(key).toConstantValue(value);
+  }
+
   /** 是否已绑定（类或别名） */
   has(id: ServiceIdentifier | Ctor): boolean {
     return this.raw.isBound(id as ServiceIdentifier);
@@ -66,7 +82,7 @@ class AppContainer {
 
   /** 按类获取单例 */
   get<T>(ctor: Ctor<T>): T;
-  /** 按字符串别名获取（定时任务等） */
+  /** 按字符串别名 / Symbol / @Bean Token 获取 */
   get<T = unknown>(id: string | symbol): T;
   get<T>(id: Ctor<T> | string | symbol): T {
     const key = id as ServiceIdentifier;

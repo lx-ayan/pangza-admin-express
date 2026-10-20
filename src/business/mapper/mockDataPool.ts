@@ -1,5 +1,5 @@
 import { Mapper, MapperType } from "@/framework/Service";
 import MockDataPoolEntity from "@/business/entity/mockDataPool";
 
-@Mapper(MockDataPoolEntity, { logicDelete: true, fill: true })
+@Mapper(MockDataPoolEntity)
 export default class MockDataPoolMapper extends MapperType {}

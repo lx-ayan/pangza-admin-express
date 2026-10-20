@@ -2,7 +2,6 @@ import { BaseService, Container, Service } from "@/framework/Service";
 import { QueryWrapper } from "@/framework/ORM";
 import { configureLog, type OperationLogRecord } from "@/framework/Log";
 import SysLogMapper from "@/business/mapper/sysLog";
-import { rowsToCamel } from "@/framework/utils/case";
 import {
   toPageResult,
   type PageRequest,
@@ -95,7 +94,7 @@ export default class SysLogService extends BaseService {
     );
     return toPageResult({
       ...page,
-      records: rowsToCamel(page.records as any),
+      records: page.records as Record<string, unknown>[],
     });
   }
 
@@ -105,7 +104,7 @@ export default class SysLogService extends BaseService {
     limit = 5000
   ): Promise<Record<string, unknown>[]> {
     const list = await this.selectList(this.buildQueryWrapper(form), limit);
-    return rowsToCamel(list as any);
+    return list as Record<string, unknown>[];
   }
 }
 

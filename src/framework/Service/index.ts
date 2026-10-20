@@ -7,6 +7,8 @@ export {
   Service,
   Inject,
 } from "./decorators";
+export { Bean, getBeanMethods, registerBeansFromComponent } from "./bean";
+export type { BeanToken, BeanOptions, BeanMethodMeta } from "./bean";
 export { BaseService } from "./BaseService";
 export { MapperType } from "./MapperType";
 export type { IService, MapperDelegateMethod } from "./types";
@@ -20,4 +22,5 @@ export {
   TableName,
   TableId,
   TableField,
+  IdType,
 } from "@/framework/ORM";

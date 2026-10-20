@@ -7,7 +7,7 @@ export interface NameAndPermission {
 }
 
 /** user 表：实体注解 + 逻辑删除 */
-@Mapper(UserEntity, { logicDelete: true, fill: true })
+@Mapper(UserEntity)
 export default class UserMapper extends MapperType {
   /**
    * 对齐 Java UserMapper.getUserPermission：

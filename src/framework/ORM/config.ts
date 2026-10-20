@@ -10,7 +10,7 @@ function strOrUndef(value: string | undefined): string | undefined {
   return v ? v : undefined;
 }
 
-/** 读取当前全局 ORM 配置（.env + configure 覆盖） */
+/** 读取当前全局 ORM 配置（YAML + configure 覆盖） */
 export function getOrmConfig(): ResolvedOrmConfig {
   return {
     logicDelete: runtime.logicDelete ?? ormEnvConfig.logicDelete,
@@ -22,6 +22,10 @@ export function getOrmConfig(): ResolvedOrmConfig {
       runtime.logicNotDeleteValue ?? ormEnvConfig.logicNotDeleteValue,
     optimisticLock: runtime.optimisticLock ?? ormEnvConfig.optimisticLock,
     versionField: runtime.versionField ?? ormEnvConfig.versionField,
+    idType: runtime.idType ?? ormEnvConfig.idType,
+    mapUnderscoreToCamelCase:
+      runtime.mapUnderscoreToCamelCase ??
+      ormEnvConfig.mapUnderscoreToCamelCase,
     fillCreateTime:
       runtime.fillCreateTime ?? strOrUndef(ormEnvConfig.fillCreateTime),
     fillUpdateTime:
@@ -47,7 +51,7 @@ function syncSqlLogFromConfig(): void {
   });
 }
 
-// 模块加载时按 .env 同步一次
+// 模块加载时按 YAML 同步一次
 syncSqlLogFromConfig();
 
 /**

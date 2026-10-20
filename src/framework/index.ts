@@ -148,8 +148,16 @@ export {
   TableField,
   getTableName,
   getEntityFields,
+  getEntityIdField,
   getEntityTableMeta,
   applyEntityFieldFills,
+  IdType,
+  resolveIdType,
+  setIdentifierGenerator,
+  getIdentifierGenerator,
+  defaultIdentifierGenerator,
+  DataSource,
+  getDialect,
 } from "./ORM";
 export type {
   FieldSelectOptions,
@@ -175,6 +183,14 @@ export type {
   TableSearchOptions,
   TableSearchMeta,
   QueryWrapperAndPage,
+  SqlExecuteOptions,
+  SelectOptions,
+  TransactionalOptions,
+  DbType,
+  Dialect,
+  DataSourceConfig,
+  IdTypeValue,
+  IdentifierGenerator,
 } from "./ORM";
 
 // ─── Log（操作日志模块工厂；方法装饰器见上方 Log）────────────────
@@ -273,6 +289,7 @@ export {
   Container,
   Component,
   Resource,
+  Bean,
   Mapper,
   Service,
   Inject,
@@ -280,7 +297,14 @@ export {
   MapperType,
   MAPPER_DELEGATE_METHODS,
 } from "./Service";
-export type { Ctor, IService, MapperDelegateMethod } from "./Service";
+export type {
+  Ctor,
+  IService,
+  MapperDelegateMethod,
+  BeanToken,
+  BeanOptions,
+  BeanMethodMeta,
+} from "./Service";
 
 // ─── config ─────────────────────────────────────────────────────
 export {

@@ -1,11 +1,12 @@
-import { TableField, TableId, TableName } from "@/framework/ORM";
+import { IdType, TableField, TableId, TableName } from "@/framework/ORM";
 
 /**
  * test 表实体（对齐 MyBatis-Plus 注解）
  */
 @TableName("test")
 export default class TestEntity {
-  @TableId()
+  /** 演示库自增，覆盖全局 ASSIGN_ID */
+  @TableId({ type: IdType.AUTO })
   id!: number;
 
   @TableField()

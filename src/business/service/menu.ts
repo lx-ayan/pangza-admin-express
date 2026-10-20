@@ -10,8 +10,6 @@ import { AuthUtil } from "@/framework/Auth";
 import MenuMapper from "@/business/mapper/menu";
 import MenuRoleMapper from "@/business/mapper/menuRole";
 import MenuEntity, { type MenuMeta } from "@/business/entity/menu";
-import { rowToCamel, rowsToCamel } from "@/framework/utils/case";
-import { nextId } from "@/framework/utils/id";
 import {
   toPageResult,
   type PageRequest,
@@ -101,13 +99,13 @@ export default class MenuService extends BaseService {
   /** 当前用户路由树 —— UI 启动关键 */
   async getUserRouter(): Promise<Record<string, unknown>[]> {
     const userId = String(await AuthUtil.getLoginId());
-    const rows = rowsToCamel(await this.selectMenusByUserId(userId));
+    const rows = await this.selectMenusByUserId(userId);
     return buildTree(rows, ROOT_PARENT);
   }
 
   /** 全量菜单树 */
   async getMenuWithChildren(): Promise<Record<string, unknown>[]> {
-    const rows = rowsToCamel(await this.selectAllMenus());
+    const rows = await this.selectAllMenus();
     return buildTree(rows, ROOT_PARENT);
   }
 
@@ -125,7 +123,7 @@ export default class MenuService extends BaseService {
     );
 
     const page = await this.selectPage(pageQuery, queryWrapper);
-    const list = rowsToCamel(page.records as any);
+    const list = page.records as Record<string, unknown>[];
     await this.fillParentTitle(list);
     return toPageResult({ ...page, records: list });
   }
@@ -144,7 +142,7 @@ export default class MenuService extends BaseService {
       const parents = await this.selectList(
         new QueryWrapper().in("id", parentIds).select("id", "title")
       );
-      for (const p of rowsToCamel(parents as any)) {
+      for (const p of parents as Record<string, unknown>[]) {
         titleMap.set(String(p.id), String(p.title ?? ""));
       }
     }
@@ -163,7 +161,6 @@ export default class MenuService extends BaseService {
       throw new OrmError("参数错误");
     }
     await this.insert({
-      id: nextId(),
       name: dto.name,
       path: dto.path,
       title: dto.title,
@@ -190,7 +187,7 @@ export default class MenuService extends BaseService {
 
   async getMenuById(id: string): Promise<Record<string, unknown> | null> {
     // BaseMapper.selectById 会自动填充 eager 字段级 @Select（如 roleName）
-    return rowToCamel((await this.selectById(id)) as any);
+    return (await this.selectById(id)) as Record<string, unknown> | null;
   }
 
   async deleteMenu(id: string): Promise<void> {
@@ -202,9 +199,7 @@ export default class MenuService extends BaseService {
     const list = await this.menuRoleMapper.selectList(
       new QueryWrapper().eq("menu_id", menuId).select("role_id")
     );
-    return rowsToCamel<{ roleId: string }>(list as any).map((r) =>
-      String(r.roleId)
-    );
+    return list.map((r) => String((r as { roleId?: string }).roleId));
   }
 
   async bindRole(dto: BindRoleDTO): Promise<void> {
