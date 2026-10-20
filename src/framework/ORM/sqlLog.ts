@@ -71,14 +71,31 @@ function formatTime(date: Date): string {
   );
 }
 
+/** 日志参数脱敏：键名含这些片段时替换为 *** */
+const SENSITIVE_KEY_RE =
+  /password|passwd|pwd|secret|token|authorization|credential|private.?key|access.?key/i;
+
+function walkRedact(value: unknown, key?: string): unknown {
+  if (key && SENSITIVE_KEY_RE.test(key)) return "***";
+  if (typeof value === "bigint") return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (Buffer.isBuffer(value)) return `<Buffer ${value.length}b>`;
+  if (Array.isArray(value)) {
+    return value.map((item, i) => walkRedact(item, String(i)));
+  }
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = walkRedact(v, k);
+    }
+    return out;
+  }
+  return value;
+}
+
 function safeParams(params: unknown[]): string {
   try {
-    return JSON.stringify(params, (_k, v) => {
-      if (typeof v === "bigint") return v.toString();
-      if (v instanceof Date) return v.toISOString();
-      if (Buffer.isBuffer(v)) return `<Buffer ${v.length}b>`;
-      return v;
-    });
+    return JSON.stringify(params.map((p) => walkRedact(p)));
   } catch {
     return String(params);
   }

@@ -12,6 +12,11 @@ export interface Dialect {
    * MySQL / SQL Server 保持 `?`；PostgreSQL 转为 `$1,$2,...`
    */
   convertPlaceholders(sql: string): string;
+  /**
+   * LIKE / NOT LIKE 的 ESCAPE 子句（含前导空格）。
+   * MySQL 字符串里 `\\\\` 表示一个反斜杠转义符；PG / MSSQL 用 `\\`。
+   */
+  likeEscapeClause(): string;
   /** 追加 LIMIT / OFFSET（或 SQL Server OFFSET FETCH） */
   appendLimitOffset(
     sql: string,
@@ -50,6 +55,9 @@ export const MysqlDialect: Dialect = {
   convertPlaceholders(sql) {
     return sql;
   },
+  likeEscapeClause() {
+    return " ESCAPE '\\\\'";
+  },
   appendLimitOffset(sql, limit, offset = 0) {
     if (offset > 0) return `${sql} LIMIT ${limit} OFFSET ${offset}`;
     return `${sql} LIMIT ${limit}`;
@@ -83,6 +91,9 @@ export const PostgresqlDialect: Dialect = {
   },
   convertPlaceholders(sql) {
     return replaceQuestionMarks(sql, (i) => `$${i}`);
+  },
+  likeEscapeClause() {
+    return " ESCAPE '\\'";
   },
   appendLimitOffset(sql, limit, offset = 0) {
     if (offset > 0) return `${sql} LIMIT ${limit} OFFSET ${offset}`;
@@ -125,6 +136,9 @@ export const SqlServerDialect: Dialect = {
   convertPlaceholders(sql) {
     // node-mssql 对 ? 支持不稳定，统一转 @p1,@p2
     return replaceQuestionMarks(sql, (i) => `@p${i}`);
+  },
+  likeEscapeClause() {
+    return " ESCAPE '\\'";
   },
   appendLimitOffset(sql, limit, offset = 0, hasOrderBy = false) {
     const order = hasOrderBy ? "" : " ORDER BY (SELECT NULL)";

@@ -5,10 +5,10 @@ import Db from "@/framework/ORM/Db";
 import { Select } from "@/framework/ORM/sqlDecorators";
 import { hydrateFieldSelects } from "@/framework/ORM/hydrate";
 
-const originalQuery = Db.query.bind(Db);
+const originalQueryOn = Db.queryOn.bind(Db);
 
 afterEach(() => {
-  Db.query = originalQuery;
+  Db.queryOn = originalQueryOn;
 });
 
 describe("字段 @Select 批量填充", () => {
@@ -21,14 +21,14 @@ describe("字段 @Select 批量填充", () => {
     }
 
     const calls: Array<{ sql: string; params: unknown[] }> = [];
-    Db.query = (async (sql: string, params: unknown[] = []) => {
+    Db.queryOn = (async (_ds: string, sql: string, params: unknown[] = []) => {
       calls.push({ sql, params });
       return [
         { parent_id: 1, name: "a" },
         { parent_id: 1, name: "b" },
         { parent_id: 2, name: "c" },
       ];
-    }) as typeof Db.query;
+    }) as typeof Db.queryOn;
 
     const rows: Array<{
       id: number;
@@ -62,10 +62,10 @@ describe("字段 @Select 批量填充", () => {
     }
 
     const calls: string[] = [];
-    Db.query = (async (sql: string) => {
+    Db.queryOn = (async (_ds: string, sql: string) => {
       calls.push(sql);
       return [{ name: "admin" }];
-    }) as typeof Db.query;
+    }) as typeof Db.queryOn;
 
     const rows: Array<{ id: number; roleName?: string }> = [
       { id: 1 },

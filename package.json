@@ -8,7 +8,8 @@
     "build": "node scripts/build.js",
     "build:raw": "node scripts/build.js --no-minify",
     "start": "node dist/index.js",
-    "test": "node --require ./test/register.js --test --test-force-exit --test-reporter spec test/*.test.ts"
+    "test": "node --require ./test/register.js --test --test-force-exit --test-reporter spec test/*.test.ts",
+    "migrate": "node scripts/migrate.js"
   },
   "repository": {
     "type": "git",

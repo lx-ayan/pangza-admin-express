@@ -59,6 +59,15 @@ interface AppYaml {
         cost?: boolean;
       };
     };
+    /** 批次大小：saveBatch / updateBatch / 大 IN */
+    batch?: {
+      insertSize?: number;
+      updateSize?: number;
+      inSize?: number;
+    };
+    /** MyBatis 风格 XML Mapper 路径 */
+    mapperLocations?: string[];
+    mapperReload?: boolean;
   };
 }
 
@@ -327,6 +336,17 @@ export const ormEnvConfig = {
     | "debug"
     | "info"
     | "warn",
+  /** saveBatch 每批条数 */
+  batchInsertSize: Math.max(1, asInt(orm.batch?.insertSize, 200)),
+  /** updateBatch 每批条数 */
+  batchUpdateSize: Math.max(1, asInt(orm.batch?.updateSize, 200)),
+  /** deleteByIds / QueryWrapper.in 等 IN (...) 每批个数 */
+  batchInSize: Math.max(1, asInt(orm.batch?.inSize, 500)),
+  /** XML Mapper 扫描路径 */
+  mapperLocations: Array.isArray(orm.mapperLocations)
+    ? orm.mapperLocations.map((s) => String(s).trim()).filter(Boolean)
+    : [],
+  mapperReload: asBool(orm.mapperReload, false),
 };
 
 console.info(

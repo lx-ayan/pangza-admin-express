@@ -53,8 +53,44 @@ export {
   getFieldSelect,
 } from "./fieldSelect";
 export type { FieldSelectOptions, FieldSelectMeta } from "./fieldSelect";
-export { hydrateFieldSelects, buildRowParamContext } from "./hydrate";
-export type { HydrateFieldSelectOptions } from "./hydrate";
+export {
+  hydrateFieldSelects,
+  hydrateRelations,
+  buildRowParamContext,
+} from "./hydrate";
+export type {
+  HydrateFieldSelectOptions,
+  HydrateRelationsOptions,
+} from "./hydrate";
+export {
+  ManyToOne,
+  OneToMany,
+  ManyToMany,
+  getRelations,
+  getRelation,
+  relationToFieldSelect,
+} from "./relation";
+export type {
+  RelationKind,
+  RelationFetch,
+  RelationMeta,
+  ManyToOneOptions,
+  OneToManyOptions,
+  ManyToManyOptions,
+} from "./relation";
+export {
+  MapperXml,
+  xmlMapper,
+  loadXmlMappers,
+  ensureXmlMappersLoaded,
+  parseMapperXml,
+  renderStatementSql,
+  evalTest,
+  getXmlStatement,
+  bootstrapXmlMappers,
+  watchXmlMappers,
+} from "./xml";
+export type { XmlMapperApi, MapperXmlOptions } from "./xml";
 export { parseMybatisSql, buildParamContext } from "./sqlTemplate";
 export {
   TableName,
@@ -91,6 +127,8 @@ export type {
   SqlLogParts,
   SqlLogInfo,
   SqlLogFormatFn,
+  TransactionPropagation,
+  SelectQueryOptions,
 } from "./types";
 export type { ParsedSql } from "./sqlTemplate";
 export type {
@@ -100,6 +138,19 @@ export type {
   EntityFieldMeta,
   EntityTableMeta,
 } from "./entityDecorators";
+
+// 按 YAML 加载 XML Mapper；开启 mapperReload 时监听变更
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { bootstrapXmlMappers, watchXmlMappers } = require("./xml") as {
+    bootstrapXmlMappers: () => void;
+    watchXmlMappers: () => void;
+  };
+  bootstrapXmlMappers();
+  watchXmlMappers();
+} catch (err) {
+  console.error("[ORM] XML Mapper 加载失败:", err);
+}
 
 // 按 YAML 自动连接默认数据源（失败仅打日志，首次 query 会再试）
 void Db.connect().catch((err: Error) => {

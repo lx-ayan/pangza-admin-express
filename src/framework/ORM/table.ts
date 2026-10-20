@@ -26,6 +26,7 @@ function cacheKey(options: MapperOptions): string {
     optimisticLock: options.optimisticLock ?? null,
     versionField: options.versionField ?? null,
     fill: options.fill ?? null,
+    updateNullStrategy: options.updateNullStrategy ?? null,
     entity: options.entity?.name ?? null,
   });
 }

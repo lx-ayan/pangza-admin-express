@@ -93,13 +93,30 @@ function resolveExpr(
   throw new Error(`[SQL] 找不到参数: ${key}`);
 }
 
+/** ${} 危险片段：拒绝拼进 SQL */
+const DOLLAR_UNSAFE_RE =
+  /;|--|\/\*|\*\/|'|"|\\|\b(union|select|insert|update|delete|drop|alter|exec|execute)\b/i;
+
+export interface ParseSqlOptions {
+  /**
+   * 为 true 时不打印 `${}` 告警（仍做危险字符校验）。
+   * 仅用于框架内部已知安全的模板。
+   */
+  silenceDollarWarn?: boolean;
+}
+
+let dollarWarnCount = 0;
+
 /**
  * 解析含 #{} / ${} 的 SQL。
  * 按出现顺序处理；${} 直接拼进 SQL，#{} 变为 ? 并收集 params。
+ *
+ * 安全：优先使用 `#{}`。`${}` 仅用于可信标识符；含 `;`/`--`/引号/SQL 关键字等会抛错，并默认打告警。
  */
 export function parseMybatisSql(
   template: string,
-  ctx: Record<string, unknown>
+  ctx: Record<string, unknown>,
+  options?: ParseSqlOptions
 ): ParsedSql {
   const params: unknown[] = [];
   const sql = String(template).replace(
@@ -110,7 +127,19 @@ export function parseMybatisSql(
         if (value === undefined || value === null) {
           throw new Error(`[SQL] \${${expr.trim()}} 的值不能为空`);
         }
-        return String(value);
+        const text = String(value);
+        if (DOLLAR_UNSAFE_RE.test(text)) {
+          throw new Error(
+            `[SQL] \${${expr.trim()}} 的值含有危险字符或关键字，已拒绝。请改用 #{} 参数绑定，或仅传入可信标识符`
+          );
+        }
+        if (!options?.silenceDollarWarn && dollarWarnCount < 20) {
+          dollarWarnCount += 1;
+          console.warn(
+            `[ORM] SQL 使用了 \${${expr.trim()}} 字符串拼接，存在注入风险；仅可用于可信表名/列名。优先改用 #{}。`
+          );
+        }
+        return text;
       }
       params.push(value);
       return "?";

@@ -56,13 +56,20 @@ orm:
   idType: ASSIGN_ID # 全局主键：ASSIGN_ID（雪花）/ AUTO / INPUT / ASSIGN_UUID / NONE
   mapUnderscoreToCamelCase: true # 查询结果列名下划线转驼峰，如 create_time → createTime
   workerId: 1 # 雪花算法机器号，0–1023；多实例部署时请区分
+  batch:
+    insertSize: 200 # saveBatch 每批插入行数
+    updateSize: 200 # updateBatch 每批更新条数
+    inSize: 500 # IN / NOT IN 与 deleteByIds 分片大小
+  # XML Mapper 路径（相对项目根，支持 **）；空表示不扫。例：mappers/**/*.xml
+  mapperLocations: []
+  mapperReload: false # 开发可 true：改 XML 热加载
   fill:
     createTime: create_time # 插入时自动填充的创建时间列
     updateTime: update_time # 插入和更新时自动填充的更新时间列
     createBy: create_by # 插入时自动填充的创建人列
     updateBy: update_by # 插入和更新时自动填充的更新人列
   sqlLog:
-    enabled: false # 是否打印 SQL
+    enabled: false # 是否打印 SQL；生产请保持 false（显式打开会告警，参数会脱敏）
     level: info # 日志级别：trace / debug / info / warn
     format: "{time} [{type}] {cost}ms | {sql} | params={params}" # 模板，占位符 {time} {type} {sql} {params} {cost}
     parts:

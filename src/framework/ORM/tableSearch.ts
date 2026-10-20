@@ -4,17 +4,24 @@ import { camelToSnake } from "@/framework/utils/case";
 import { QueryWrapper } from "./QueryWrapper";
 import type { PageQuery } from "./types";
 
-/** 对齐 Java OperTypeEnum */
+/** 对齐 Java OperTypeEnum（并补充 NOT_* / IN / BETWEEN / IS_NULL） */
 export const OperTypeEnum = {
   EQ: "EQ",
   LIKE: "LIKE",
   LIKE_LEFT: "LIKE_LEFT",
   LIKE_RIGHT: "LIKE_RIGHT",
+  NOT_LIKE: "NOT_LIKE",
   GT: "GT",
   GE: "GE",
   LT: "LT",
   LE: "LE",
   NE: "NE",
+  IN: "IN",
+  NOT_IN: "NOT_IN",
+  BETWEEN: "BETWEEN",
+  NOT_BETWEEN: "NOT_BETWEEN",
+  IS_NULL: "IS_NULL",
+  IS_NOT_NULL: "IS_NOT_NULL",
 } as const;
 
 export type OperType = (typeof OperTypeEnum)[keyof typeof OperTypeEnum];
@@ -113,6 +120,28 @@ function isEmptyValue(value: unknown): boolean {
   return false;
 }
 
+function toArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s !== "");
+  }
+  return [value];
+}
+
+function toBetweenPair(value: unknown): [unknown, unknown] | null {
+  if (Array.isArray(value) && value.length >= 2) {
+    return [value[0], value[1]];
+  }
+  if (typeof value === "string" && value.includes(",")) {
+    const parts = value.split(",").map((s) => s.trim());
+    if (parts.length >= 2) return [parts[0], parts[1]];
+  }
+  return null;
+}
+
 function applyOperator(
   wrapper: QueryWrapper,
   operator: OperType,
@@ -129,6 +158,9 @@ function applyOperator(
     case OperTypeEnum.LIKE_RIGHT:
       wrapper.likeRight(column, String(value));
       break;
+    case OperTypeEnum.NOT_LIKE:
+      wrapper.notLike(column, String(value));
+      break;
     case OperTypeEnum.GT:
       wrapper.gt(column, value);
       break;
@@ -143,6 +175,38 @@ function applyOperator(
       break;
     case OperTypeEnum.NE:
       wrapper.ne(column, value);
+      break;
+    case OperTypeEnum.IN:
+      wrapper.in(column, toArray(value));
+      break;
+    case OperTypeEnum.NOT_IN:
+      wrapper.notIn(column, toArray(value));
+      break;
+    case OperTypeEnum.BETWEEN: {
+      const pair = toBetweenPair(value);
+      if (!pair) {
+        throw new Error(
+          `@TableSearch BETWEEN 需要 [start, end] 或 "start,end"，字段列: ${column}`
+        );
+      }
+      wrapper.between(column, pair[0], pair[1]);
+      break;
+    }
+    case OperTypeEnum.NOT_BETWEEN: {
+      const pair = toBetweenPair(value);
+      if (!pair) {
+        throw new Error(
+          `@TableSearch NOT_BETWEEN 需要 [start, end] 或 "start,end"，字段列: ${column}`
+        );
+      }
+      wrapper.notBetween(column, pair[0], pair[1]);
+      break;
+    }
+    case OperTypeEnum.IS_NULL:
+      wrapper.isNull(column);
+      break;
+    case OperTypeEnum.IS_NOT_NULL:
+      wrapper.isNotNull(column);
       break;
     case OperTypeEnum.EQ:
     default:
@@ -160,7 +224,14 @@ function buildFromForm(
   const data = form as Record<string, unknown>;
   for (const meta of getTableSearchMeta(formClass)) {
     const value = data[meta.property];
-    if (isEmptyValue(value)) continue;
+    // IS_NULL / IS_NOT_NULL 不依赖表单值；其它运算符空值跳过
+    if (
+      meta.operator !== OperTypeEnum.IS_NULL &&
+      meta.operator !== OperTypeEnum.IS_NOT_NULL &&
+      isEmptyValue(value)
+    ) {
+      continue;
+    }
     applyOperator(wrapper, meta.operator, meta.column, value);
   }
 }

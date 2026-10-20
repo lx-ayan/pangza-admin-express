@@ -106,8 +106,10 @@ class Db {
     }
     const ds = this.sources.get(name);
     if (!ds) {
+      this.ensureDefault();
+      const registered = [...this.sources.keys()].join(", ") || "(无)";
       throw new Error(
-        `未注册数据源 [${name}]，请先 Db.register("${name}", { type, host, ... })`
+        `未注册数据源 [${name}]。已注册: ${registered}。请先 Db.register("${name}", { type, host, ... })`
       );
     }
     return ds;
@@ -253,15 +255,19 @@ class Db {
     return this.ensureDefault();
   }
 
-  static async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    return this.transactionOn(this.DEFAULT, fn);
+  static async transaction<T>(
+    fn: () => Promise<T>,
+    options?: { propagation?: "REQUIRED" | "REQUIRES_NEW" }
+  ): Promise<T> {
+    return this.transactionOn(this.DEFAULT, fn, options);
   }
 
   static async transactionOn<T>(
     datasource: string,
-    fn: () => Promise<T>
+    fn: () => Promise<T>,
+    options?: { propagation?: "REQUIRED" | "REQUIRES_NEW" }
   ): Promise<T> {
-    return this.getDataSource(datasource).transaction(fn);
+    return this.getDataSource(datasource).transaction(fn, options);
   }
 }
 

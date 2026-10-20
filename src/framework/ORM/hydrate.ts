@@ -5,6 +5,10 @@ import {
   type FieldSelectMeta,
 } from "./fieldSelect";
 import { mapResultRows } from "./resultMap";
+import {
+  getRelations,
+  relationToFieldSelect,
+} from "./relation";
 import { parseMybatisSql } from "./sqlTemplate";
 
 export interface HydrateFieldSelectOptions {
@@ -16,7 +20,16 @@ export interface HydrateFieldSelectOptions {
   properties?: string[];
   /** 默认数据源（字段 @Select 未指定 datasource/db 时使用） */
   datasource?: string;
+  /**
+   * 关联填充控制（声明式 @ManyToOne 等）：
+   * - 省略：仅 eager
+   * - false：不填关联（字段 @Select 仍按其余选项）
+   * - string[]：只填这些关联属性（含 lazy）
+   */
+  relations?: boolean | string[];
 }
+
+export type HydrateRelationsOptions = HydrateFieldSelectOptions;
 
 function snakeToCamel(key: string): string {
   return key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
@@ -326,8 +339,42 @@ async function hydrateBatch<T extends Record<string, any>>(
   }
 }
 
+function collectMetas(
+  entity: Function,
+  opts: HydrateFieldSelectOptions
+): FieldSelectMeta[] {
+  const fieldMetas = filterMetas(getFieldSelects(entity), opts);
+
+  if (opts.relations === false) {
+    return fieldMetas;
+  }
+
+  let rels = getRelations(entity);
+  if (Array.isArray(opts.relations)) {
+    const allow = new Set(opts.relations);
+    rels = rels.filter((r) => allow.has(r.property));
+  } else if (!opts.includeLazy) {
+    rels = rels.filter((r) => r.eager);
+  }
+
+  const dialect = Db.getDialect(
+    (opts.datasource ?? "default").trim() || "default"
+  );
+  const relMetas = rels.map((r) => relationToFieldSelect(entity, r, dialect));
+
+  // 指定 properties 时字段 @Select 已过滤；关联若用 relations: string[] 已过滤
+  if (opts.properties?.length && !Array.isArray(opts.relations)) {
+    const allow = new Set(opts.properties);
+    return [
+      ...fieldMetas,
+      ...filterMetas(relMetas, { ...opts, properties: [...allow] }),
+    ];
+  }
+  return [...fieldMetas, ...relMetas];
+}
+
 /**
- * 按实体上的字段 @Select 填充关联结果（原地修改 rows）。
+ * 按实体上的字段 @Select 与声明式关联填充（原地修改 rows）。
  * `列 = #{父字段}` 且无子查询 / LIMIT 时合并成一条 IN，避免列表 N+1。
  *
  * @example
@@ -344,7 +391,7 @@ export async function hydrateFieldSelects<T extends Record<string, any>>(
   const opts: HydrateFieldSelectOptions =
     typeof options === "number" ? { maxDepth: options } : options ?? {};
   const maxDepth = opts.maxDepth ?? 32;
-  const metas = filterMetas(getFieldSelects(entity), opts);
+  const metas = collectMetas(entity, opts);
   if (!metas.length) return rows;
 
   const batchJobs: Array<{ meta: FieldSelectMeta; plan: BatchPlan }> = [];
@@ -374,4 +421,27 @@ export async function hydrateFieldSelects<T extends Record<string, any>>(
       : Promise.resolve(),
   ]);
   return rows;
+}
+
+/**
+ * 显式按关联名水合（含 lazy）。等价于
+ * `hydrateFieldSelects(entity, rows, { relations: names, includeLazy: true })`。
+ */
+export async function hydrateRelations<T extends Record<string, any>>(
+  entity: Function | undefined,
+  rows: T[],
+  options: HydrateRelationsOptions = {}
+): Promise<T[]> {
+  if (!entity) return rows;
+  const relations =
+    options.relations === false
+      ? false
+      : Array.isArray(options.relations)
+        ? options.relations
+        : getRelations(entity).map((r) => r.property);
+  return hydrateFieldSelects(entity, rows, {
+    ...options,
+    relations,
+    includeLazy: options.includeLazy ?? true,
+  });
 }

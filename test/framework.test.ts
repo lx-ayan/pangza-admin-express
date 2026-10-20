@@ -48,23 +48,32 @@ describe("事务回滚", () => {
       committed: false,
       rolled: false,
       released: false,
-      beginTransaction: async () => undefined,
-      commit: async () => {
+      async query() {
+        return [];
+      },
+      async begin() {
+        return undefined;
+      },
+      async commit() {
         conn.committed = true;
       },
-      rollback: async () => {
+      async rollback() {
         conn.rolled = true;
       },
-      release: () => {
+      release() {
         conn.released = true;
       },
     };
-    const db = Db as unknown as {
-      ensureReady: () => Promise<{ getConnection: () => Promise<typeof conn> }>;
-    };
-    const original = db.ensureReady;
-    db.ensureReady = async () => ({
-      getConnection: async () => conn,
+    Db.usePoolForTest({
+      async query() {
+        return [];
+      },
+      async getConnection() {
+        return conn;
+      },
+      async end() {
+        return undefined;
+      },
     });
 
     try {
@@ -79,7 +88,7 @@ describe("事务回滚", () => {
       assert.equal(conn.committed, false);
       assert.equal(conn.released, true);
     } finally {
-      db.ensureReady = original;
+      Db.usePoolForTest(null as unknown as object);
     }
   });
 
@@ -87,21 +96,32 @@ describe("事务回滚", () => {
     let begins = 0;
     let commits = 0;
     const conn = {
-      beginTransaction: async () => {
+      async query() {
+        return [];
+      },
+      async begin() {
         begins += 1;
       },
-      commit: async () => {
+      async commit() {
         commits += 1;
       },
-      rollback: async () => undefined,
-      release: () => undefined,
+      async rollback() {
+        return undefined;
+      },
+      release() {
+        return undefined;
+      },
     };
-    const db = Db as unknown as {
-      ensureReady: () => Promise<{ getConnection: () => Promise<typeof conn> }>;
-    };
-    const original = db.ensureReady;
-    db.ensureReady = async () => ({
-      getConnection: async () => conn,
+    Db.usePoolForTest({
+      async query() {
+        return [];
+      },
+      async getConnection() {
+        return conn;
+      },
+      async end() {
+        return undefined;
+      },
     });
 
     class Account {
@@ -121,7 +141,7 @@ describe("事务回滚", () => {
       assert.equal(begins, 1);
       assert.equal(commits, 1);
     } finally {
-      db.ensureReady = original;
+      Db.usePoolForTest(null as unknown as object);
     }
   });
 });

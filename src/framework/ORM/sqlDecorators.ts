@@ -108,6 +108,8 @@ function createSqlMethodDecorator(kind: SqlKind) {
         return dialect.extractAffectedRows(result);
       };
 
+      (executor as any)[Symbol.for("pangza.orm.sqlBound")] = kind;
+
       if (descriptor) {
         descriptor.value = executor as never;
         return descriptor;

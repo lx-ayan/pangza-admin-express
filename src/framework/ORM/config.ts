@@ -1,4 +1,4 @@
-import { ormEnvConfig } from "@/framework/config";
+import { configProfile, ormEnvConfig } from "@/framework/config";
 import type { MetaObjectHandler, ResolvedOrmConfig } from "./types";
 import { configureSqlLog } from "./sqlLog";
 
@@ -38,13 +38,32 @@ export function getOrmConfig(): ResolvedOrmConfig {
     sqlLogFormat: runtime.sqlLogFormat ?? ormEnvConfig.sqlLogFormat,
     sqlLogParts: runtime.sqlLogParts ?? ormEnvConfig.sqlLogParts,
     sqlLogLevel: runtime.sqlLogLevel ?? ormEnvConfig.sqlLogLevel,
+    batchInsertSize:
+      runtime.batchInsertSize ?? ormEnvConfig.batchInsertSize,
+    batchUpdateSize:
+      runtime.batchUpdateSize ?? ormEnvConfig.batchUpdateSize,
+    batchInSize: runtime.batchInSize ?? ormEnvConfig.batchInSize,
+    mapperLocations:
+      runtime.mapperLocations ?? ormEnvConfig.mapperLocations ?? [],
+    mapperReload: runtime.mapperReload ?? ormEnvConfig.mapperReload ?? false,
   };
 }
 
 function syncSqlLogFromConfig(): void {
   const cfg = getOrmConfig();
+  // 生产环境：除非 configureOrm / YAML 显式打开，否则强制关闭 SQL 日志
+  const production = configProfile === "production";
+  const enabled =
+    production && runtime.sqlLog === undefined && ormEnvConfig.sqlLog !== true
+      ? false
+      : !!cfg.sqlLog;
+  if (production && enabled) {
+    console.warn(
+      "[ORM] 生产环境已开启 SQL 日志，请确认不会泄露敏感参数；日志已对 password/token 等字段脱敏"
+    );
+  }
   configureSqlLog({
-    enabled: !!cfg.sqlLog,
+    enabled,
     format: cfg.sqlLogFormat,
     parts: cfg.sqlLogParts,
     level: cfg.sqlLogLevel,

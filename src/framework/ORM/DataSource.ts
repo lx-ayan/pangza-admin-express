@@ -145,9 +145,18 @@ export class DataSource {
     return (await driver.query(executable, params)) as T;
   }
 
-  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+  /**
+   * 开启事务。
+   * - REQUIRED（默认）：已有事务则加入，否则新建
+   * - REQUIRES_NEW：始终新建独立连接事务（外层事务挂起，内层提交/回滚互不影响）
+   */
+  async transaction<T>(
+    fn: () => Promise<T>,
+    options?: { propagation?: "REQUIRED" | "REQUIRES_NEW" }
+  ): Promise<T> {
+    const propagation = options?.propagation ?? "REQUIRED";
     const current = this.txStore.getStore();
-    if (current) {
+    if (propagation === "REQUIRED" && current) {
       return fn();
     }
     const driver = await this.ensureReady();

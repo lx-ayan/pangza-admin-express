@@ -66,6 +66,20 @@ export function registerFieldSelect(
   if (!template) {
     throw new Error("@Select 字段 SQL 不能为空");
   }
+  // 延迟检查关联，避免 relation ↔ fieldSelect 循环依赖在加载期炸
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getRelation } = require("./relation") as {
+      getRelation: (c: Ctor, p: string) => unknown;
+    };
+    if (getRelation(ctor, property)) {
+      throw new Error(
+        `字段 @Select(${property}) 与关联装饰器不能同时用于同一属性`
+      );
+    }
+  } catch (err) {
+    if (err instanceof Error && /不能同时/.test(err.message)) throw err;
+  }
   addBeanKey(ctor, property);
   const map = {
     ...fieldSelectMap(ctor),

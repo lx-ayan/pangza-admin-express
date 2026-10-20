@@ -34,6 +34,12 @@ export interface MapperOptions {
   /** 是否自动填充 create/update 字段，默认 true */
   fill?: boolean;
   /**
+   * 更新时对 `null` 的策略（`undefined` 始终跳过）：
+   * - `INCLUDE`（默认）：写入 NULL
+   * - `IGNORE`：跳过 null，不更新该列
+   */
+  updateNullStrategy?: "INCLUDE" | "IGNORE";
+  /**
    * 实体类（带 @TableName / @TableId / @TableField）。
    * 用于读取表字段填充策略 insertFill / updateFill。
    */
@@ -78,7 +84,20 @@ export interface ResolvedOrmConfig {
   sqlLogParts?: SqlLogParts;
   /** SQL 日志级别，默认 info */
   sqlLogLevel?: "trace" | "debug" | "info" | "warn";
+  /** saveBatch 每批行数，默认 200 */
+  batchInsertSize?: number;
+  /** updateBatch 每批实体数，默认 200 */
+  batchUpdateSize?: number;
+  /** 大 IN 分批（QueryWrapper.in / deleteByIds 等），默认 500 */
+  batchInSize?: number;
+  /** XML 扫描路径（相对项目根或绝对路径），如 mappers/**\/*.xml；空数组表示不启用 */
+  mapperLocations?: string[];
+  /** 开发态改 XML 热加载，默认 false */
+  mapperReload?: boolean;
 }
+
+/** @Transactional 传播行为（对齐 Spring） */
+export type TransactionPropagation = "REQUIRED" | "REQUIRES_NEW";
 
 /** SQL 日志各片段开关（时间 / 类型 / 语句 / 参数 / 耗时） */
 export interface SqlLogParts {
@@ -114,6 +133,17 @@ export interface PageQuery {
   size?: number;
 }
 
+/**
+ * 查询时关联 / 字段 @Select 填充选项。
+ * - `relations` 省略：仅 eager
+ * - `false`：不填充关联与字段 @Select
+ * - `string[]`：只填充列出的属性（含 lazy 关联）
+ */
+export interface SelectQueryOptions {
+  limit?: number;
+  relations?: boolean | string[];
+}
+
 /** 分页结果 */
 export interface IPage<T> {
   records: T[];
@@ -126,6 +156,10 @@ export interface IPage<T> {
 export interface SqlFragment {
   selectSql: string;
   whereSql: string;
+  /** `GROUP BY ...`，无则空串 */
+  groupSql: string;
+  /** `HAVING ...`，无则空串；参数已并入 params（接在 WHERE 之后） */
+  havingSql: string;
   orderSql: string;
   lastSql: string;
   params: unknown[];

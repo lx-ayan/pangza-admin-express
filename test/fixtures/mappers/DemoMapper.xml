@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper>
+<mapper namespace="com.pangza.DemoMapper">
+  <sql id="cols">id, user_name, status</sql>
+
+  <select id="findByRole">
+    SELECT <include refid="cols"/>
+    FROM sys_user
+    <where>
+      <if test="roleId != null">
+        AND id IN (
+          SELECT user_id FROM sys_user_role WHERE role_id = #{roleId}
+        )
+      </if>
+      AND delete_flag = 0
+    </where>
+    ORDER BY id DESC
+  </select>
+
+  <select id="findByIds">
+    SELECT id FROM sys_user
+    WHERE id IN
+    <foreach collection="ids" item="id" open="(" close=")" separator=",">
+      #{id}
+    </foreach>
+  </select>
+
+  <insert id="insertOne">
+    INSERT INTO sys_user(id, user_name) VALUES(#{id}, #{userName})
+  </insert>
+</mapper>

@@ -19,6 +19,7 @@ import type {
   MapperOptions,
   PageQuery,
   ResolvedOrmConfig,
+  SelectQueryOptions,
 } from "./types";
 
 interface MapperRuntime {
@@ -33,6 +34,8 @@ interface MapperRuntime {
   optimisticLockExplicit?: boolean;
   versionField: string;
   fill: boolean;
+  /** 更新时 null：INCLUDE 写入 / IGNORE 跳过 */
+  updateNullStrategy: "INCLUDE" | "IGNORE";
   entity?: Function;
 }
 
@@ -64,9 +67,19 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
         options.versionField ?? global.versionField
       ),
       fill: options.fill ?? true,
+      updateNullStrategy: options.updateNullStrategy ?? "INCLUDE",
       entity: options.entity,
     };
     this.dialect = Db.getDialect(datasource);
+  }
+
+  /** 更新字段是否参与 SET（undefined 永不参与；null 受 updateNullStrategy 控制） */
+  private shouldWriteUpdateValue(value: unknown): boolean {
+    if (value === undefined) return false;
+    if (value === null && this.opts.updateNullStrategy === "IGNORE") {
+      return false;
+    }
+    return true;
   }
 
   private async query<R = unknown>(
@@ -179,7 +192,9 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     const field = this.opts.logicDeleteField;
     if (!cols.has(field)) {
       throw new Error(
-        `[ORM] 表 ${this.tableSql()} 没有逻辑删除字段 ${this.colSql(field)}。请先加列，或在 @Mapper 上设置 logicDelete: false`
+        `[ORM] 表 ${this.opts.table}（数据源 ${this.opts.datasource}）没有逻辑删除列 ${field}。` +
+          `请 ALTER TABLE 增加该列，或 @Mapper / table(..., { logicDelete: false })。` +
+          `当前表列: ${[...cols].join(", ") || "(空)"}`
       );
     }
   }
@@ -195,29 +210,121 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
       .eq(this.opts.logicDeleteField, this.opts.logicNotDeleteValue);
   }
 
-  private hydrateOpts() {
+  private hydrateOpts(query?: SelectQueryOptions) {
+    if (query?.relations === false) {
+      return {
+        datasource: this.opts.datasource,
+        relations: false as const,
+        properties: [] as string[],
+      };
+    }
+    if (Array.isArray(query?.relations)) {
+      return {
+        datasource: this.opts.datasource,
+        relations: query!.relations,
+        includeLazy: true,
+        properties: query!.relations,
+      };
+    }
     return { datasource: this.opts.datasource };
   }
 
+  private normalizeListArgs(
+    wrapperOrOptions?: QueryWrapper | SelectQueryOptions,
+    limitOrOptions?: number | SelectQueryOptions
+  ): { wrapper?: QueryWrapper; options: SelectQueryOptions } {
+    if (
+      wrapperOrOptions &&
+      typeof wrapperOrOptions === "object" &&
+      !(wrapperOrOptions instanceof QueryWrapper) &&
+      ("relations" in wrapperOrOptions || "limit" in wrapperOrOptions)
+    ) {
+      return { options: wrapperOrOptions as SelectQueryOptions };
+    }
+    if (typeof limitOrOptions === "number") {
+      return {
+        wrapper: wrapperOrOptions as QueryWrapper | undefined,
+        options: { limit: limitOrOptions },
+      };
+    }
+    return {
+      wrapper: wrapperOrOptions as QueryWrapper | undefined,
+      options: (limitOrOptions as SelectQueryOptions | undefined) ?? {},
+    };
+  }
+
   /** 按主键查询 */
-  async selectById(id: string | number): Promise<T | null> {
+  async selectById(
+    id: string | number,
+    options?: SelectQueryOptions
+  ): Promise<T | null> {
     return this.selectOne(
-      new QueryWrapper(this.dialect).eq(this.opts.idField, id)
+      new QueryWrapper(this.dialect).eq(this.opts.idField, id),
+      options
     );
   }
 
   /** 条件查询单条 */
-  async selectOne(wrapper?: QueryWrapper): Promise<T | null> {
-    const list = await this.selectList(wrapper, 1);
+  async selectOne(
+    wrapper?: QueryWrapper,
+    options?: SelectQueryOptions
+  ): Promise<T | null> {
+    const list = await this.selectList(wrapper, {
+      ...options,
+      limit: options?.limit ?? 1,
+    });
     return list[0] ?? null;
   }
 
-  /** 条件查询列表 */
-  async selectList(wrapper?: QueryWrapper, limit?: number): Promise<T[]> {
+  /** WHERE + GROUP BY + HAVING + ORDER BY + LAST（去多余空格） */
+  private fragTail(frag: {
+    whereSql: string;
+    groupSql: string;
+    havingSql: string;
+    orderSql: string;
+    lastSql: string;
+  }): string {
+    return `${frag.whereSql} ${frag.groupSql} ${frag.havingSql} ${frag.orderSql} ${frag.lastSql}`
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  /** 有 GROUP BY 时用子查询计组数，否则普通 COUNT */
+  private countSqlFromFrag(frag: {
+    whereSql: string;
+    groupSql: string;
+    havingSql: string;
+    lastSql: string;
+  }): string {
+    if (frag.groupSql) {
+      const inner = `${frag.whereSql} ${frag.groupSql} ${frag.havingSql} ${frag.lastSql}`
+        .replace(/\s+/g, " ")
+        .trim();
+      return `SELECT COUNT(1) AS cnt FROM (SELECT 1 FROM ${this.tableSql()} ${inner}) AS _g`;
+    }
+    return `SELECT COUNT(1) AS cnt FROM ${this.tableSql()} ${frag.whereSql} ${frag.lastSql}`
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  /**
+   * 条件查询列表。
+   * @param limitOrOptions 数字 limit，或 `{ limit, relations }`
+   */
+  async selectList(
+    wrapper?: QueryWrapper | SelectQueryOptions,
+    limitOrOptions?: number | SelectQueryOptions
+  ): Promise<T[]> {
+    const { wrapper: w, options } = this.normalizeListArgs(
+      wrapper,
+      limitOrOptions
+    );
     await this.assertLogicDeleteColumn();
-    const frag = this.withLogic(wrapper).build();
-    let sql = `SELECT ${frag.selectSql} FROM ${this.tableSql()} ${frag.whereSql} ${frag.orderSql} ${frag.lastSql}`.trim();
+    const frag = this.withLogic(w).build();
+    let sql =
+      `SELECT ${frag.selectSql} FROM ${this.tableSql()} ${this.fragTail(frag)}`.trim();
     const params = [...frag.params];
+    const limit = options.limit;
     if (limit != null) {
       const n = assertSafeUint(limit, "limit");
       const hasOrder = /\bORDER\s+BY\b/i.test(sql);
@@ -226,14 +333,18 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     const rows = mapResultRows(
       (await this.query<RowDataPacket[]>(sql, params)) as T[]
     );
-    return hydrateFieldSelects(this.opts.entity, rows, this.hydrateOpts());
+    return hydrateFieldSelects(
+      this.opts.entity,
+      rows,
+      this.hydrateOpts(options)
+    );
   }
 
-  /** 条件计数 */
+  /** 条件计数（含 GROUP BY 时返回分组行数） */
   async selectCount(wrapper?: QueryWrapper): Promise<number> {
     await this.assertLogicDeleteColumn();
     const frag = this.withLogic(wrapper).build();
-    const sql = `SELECT COUNT(1) AS cnt FROM ${this.tableSql()} ${frag.whereSql} ${frag.lastSql}`.trim();
+    const sql = this.countSqlFromFrag(frag);
     const rows = await this.query<RowDataPacket[]>(sql, frag.params);
     return Number(rows[0]?.cnt ?? rows[0]?.CNT ?? 0);
   }
@@ -241,7 +352,8 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
   /** 分页查询 */
   async selectPage(
     page: PageQuery = {},
-    wrapper?: QueryWrapper
+    wrapper?: QueryWrapper,
+    options?: SelectQueryOptions
   ): Promise<IPage<T>> {
     const current = assertSafeUint(Math.max(1, page.current ?? 1), "current");
     const size = assertSafeUint(Math.max(1, page.size ?? 10), "size");
@@ -249,10 +361,9 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
 
     await this.assertLogicDeleteColumn();
     const frag = this.withLogic(wrapper).build();
-    const whereOrder = `${frag.whereSql} ${frag.orderSql} ${frag.lastSql}`.trim();
-
-    const countSql = `SELECT COUNT(1) AS cnt FROM ${this.tableSql()} ${frag.whereSql} ${frag.lastSql}`.trim();
-    let listSql = `SELECT ${frag.selectSql} FROM ${this.tableSql()} ${whereOrder}`.trim();
+    const countSql = this.countSqlFromFrag(frag);
+    let listSql =
+      `SELECT ${frag.selectSql} FROM ${this.tableSql()} ${this.fragTail(frag)}`.trim();
     const hasOrder = /\bORDER\s+BY\b/i.test(listSql);
     listSql = this.dialect.appendLimitOffset(listSql, size, offset, hasOrder);
 
@@ -266,7 +377,7 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
       records: await hydrateFieldSelects(
         this.opts.entity,
         records,
-        this.hydrateOpts()
+        this.hydrateOpts(options)
       ),
       total: Number(countRows[0]?.cnt ?? countRows[0]?.CNT ?? 0),
       current,
@@ -372,7 +483,7 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
 
   /**
    * 批量插入，返回影响行数。
-   * 多行一条 INSERT，内部按 200 条分批，避免单条 SQL 过大。
+   * 多行一条 INSERT，按 `orm.batch.insertSize`（默认 200）分批。
    */
   async saveBatch(entities: Array<Partial<T>>): Promise<number> {
     const list = (entities ?? []).filter(
@@ -390,7 +501,7 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
         this.writeBackId(entity, normalized, 0);
       }
 
-      const batchSize = 200;
+      const batchSize = Math.max(1, this.cfg().batchInsertSize ?? 200);
       let affected = 0;
       for (let i = 0; i < rows.length; i += batchSize) {
         affected += await this.insertMany(rows.slice(i, i + batchSize));
@@ -496,7 +607,7 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
       (k) =>
         k !== this.opts.idField &&
         k !== this.opts.versionField &&
-        normalized[k] !== undefined
+        this.shouldWriteUpdateValue(normalized[k])
     );
 
     const sets: string[] = keys.map((k) => `${this.colSql(k)} = ?`);
@@ -531,6 +642,49 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     return affected;
   }
 
+  /**
+   * 有主键且库中存在则 updateById，否则 insert。
+   * 返回影响行数（insert / update 语义与各自方法一致）。
+   */
+  async saveOrUpdate(entity: Partial<T>): Promise<number> {
+    const id = entity[this.opts.idField as keyof T] as
+      | string
+      | number
+      | null
+      | undefined;
+    if (id === undefined || id === null || id === "") {
+      return this.insert(entity);
+    }
+    const existing = await this.selectById(id);
+    if (!existing) {
+      return this.insert(entity);
+    }
+    return this.updateById(entity);
+  }
+
+  /**
+   * 按主键批量更新（逐条 updateById，同一事务）。
+   * 分批大小取 `orm.batch.updateSize`（默认 200）。
+   */
+  async updateBatch(entities: Array<Partial<T>>): Promise<number> {
+    const list = (entities ?? []).filter(
+      (item) => item != null && typeof item === "object"
+    );
+    if (list.length === 0) return 0;
+
+    const batchSize = Math.max(1, this.cfg().batchUpdateSize ?? 200);
+    return this.tx(async () => {
+      let affected = 0;
+      for (let i = 0; i < list.length; i += batchSize) {
+        const chunk = list.slice(i, i + batchSize);
+        for (const entity of chunk) {
+          affected += await this.updateById(entity);
+        }
+      }
+      return affected;
+    });
+  }
+
   /** 条件更新 */
   async update(entity: Partial<T>, wrapper: QueryWrapper): Promise<number> {
     await this.assertLogicDeleteColumn();
@@ -551,7 +705,9 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
         : undefined;
 
     const keys = Object.keys(normalized).filter(
-      (k) => k !== this.opts.versionField && normalized[k] !== undefined
+      (k) =>
+        k !== this.opts.versionField &&
+        this.shouldWriteUpdateValue(normalized[k])
     );
     const sets: string[] = keys.map((k) => `${this.colSql(k)} = ?`);
     const values: unknown[] = keys.map((k) => normalized[k]);
@@ -588,17 +744,52 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
    * 开启逻辑删除时一条 UPDATE ... IN (...)，否则物理 DELETE。
    */
   async deleteByIds(ids: Array<string | number>): Promise<number> {
+    return this.deleteByIdsInternal(ids, false);
+  }
+
+  /**
+   * 按主键物理删除（始终 DELETE，忽略逻辑删除开关）。
+   * 用于彻底清除或回收站清空。
+   */
+  async physicalDeleteById(id: string | number): Promise<number> {
+    return this.physicalDeleteByIds([id]);
+  }
+
+  /** 按主键批量物理删除 */
+  async physicalDeleteByIds(ids: Array<string | number>): Promise<number> {
+    return this.deleteByIdsInternal(ids, true);
+  }
+
+  /** 条件删除（开启逻辑删除时改为 UPDATE） */
+  async delete(wrapper: QueryWrapper): Promise<number> {
+    return this.deleteByWrapper(wrapper, false);
+  }
+
+  /**
+   * 条件物理删除（始终 DELETE）。
+   * 必须带 WHERE；不会自动附加「未删除」条件（可删已逻辑删除行）。
+   */
+  async physicalDelete(wrapper: QueryWrapper): Promise<number> {
+    return this.deleteByWrapper(wrapper, true);
+  }
+
+  private async deleteByIdsInternal(
+    ids: Array<string | number>,
+    physical: boolean
+  ): Promise<number> {
     const list = (ids ?? []).filter((id) => id !== undefined && id !== null);
     if (list.length === 0) return 0;
 
-    await this.assertLogicDeleteColumn();
-    const batchSize = 500;
+    if (!physical) {
+      await this.assertLogicDeleteColumn();
+    }
+    const batchSize = Math.max(1, this.cfg().batchInSize ?? 500);
     return this.tx(async () => {
       let affected = 0;
       for (let i = 0; i < list.length; i += batchSize) {
         const chunk = list.slice(i, i + batchSize);
         const placeholders = chunk.map(() => "?").join(", ");
-        if (!this.isLogicDelete()) {
+        if (physical || !this.isLogicDelete()) {
           const sql = `DELETE FROM ${this.tableSql()} WHERE ${this.idSql()} IN (${placeholders})`;
           const result = await this.query(sql, chunk);
           affected += this.dialect.extractAffectedRows(result);
@@ -614,14 +805,22 @@ export class BaseMapper<T extends Record<string, any> = Record<string, any>> {
     });
   }
 
-  /** 条件删除（开启逻辑删除时改为 UPDATE） */
-  async delete(wrapper: QueryWrapper): Promise<number> {
-    await this.assertLogicDeleteColumn();
-    const frag = this.withLogic(wrapper).build();
-    if (!frag.whereSql) {
-      throw new Error("delete 必须带 WHERE 条件，防止全表删除");
+  private async deleteByWrapper(
+    wrapper: QueryWrapper,
+    physical: boolean
+  ): Promise<number> {
+    if (!physical) {
+      await this.assertLogicDeleteColumn();
     }
-    if (!this.isLogicDelete()) {
+    const frag = physical
+      ? (wrapper ?? new QueryWrapper(this.dialect)).build()
+      : this.withLogic(wrapper).build();
+    if (!frag.whereSql) {
+      throw new Error(
+        `${physical ? "physicalDelete" : "delete"} 必须带 WHERE 条件，防止全表删除`
+      );
+    }
+    if (physical || !this.isLogicDelete()) {
       const sql = `DELETE FROM ${this.tableSql()} ${frag.whereSql} ${frag.lastSql}`.trim();
       const result = await this.query(sql, frag.params);
       return this.dialect.extractAffectedRows(result);
