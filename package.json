@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "node -e \"if(process.platform==='win32'){require('child_process').spawnSync(process.env.ComSpec||'cmd.exe',['/c','chcp','65001','>nul'],{stdio:'ignore',windowsHide:true})}\" && ts-node-dev -r ./scripts/register-dev.js src/index.ts",
+    "dev": "node -e \"if(process.platform==='win32'){require('child_process').spawnSync(process.env.ComSpec||'cmd.exe',['/c','chcp','65001','>nul'],{stdio:'ignore',windowsHide:true})}\" && ts-node-dev --transpile-only -r ./scripts/register-dev.js src/index.ts",
     "build": "node scripts/build.js",
     "build:raw": "node scripts/build.js --no-minify",
     "start": "node dist/index.js",

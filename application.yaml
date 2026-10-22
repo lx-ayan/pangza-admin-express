@@ -5,13 +5,36 @@
 
 server:
   port: 3990 # HTTP 监听端口
+  # 是否信任 Nginx 等传入的 X-Forwarded-For。默认 false，防伪造 IP 绕过限流。
+  # 仅当前面有可信反代时再改为 true。
+  trustProxy: false
 
 redis:
-  host: 127.0.0.1 # Redis 主机
+  host: 127.0.0.1 # Redis 主机（standalone）
   port: 6379 # Redis 端口
-  password: "" # Redis 密码，空表示无密码
-  db: 0 # Redis 库序号
+  password: "" # Redis 密码；生产务必设置，空密码会告警
+  username: "" # ACL 用户名（Redis 6+），空则不传
+  db: 0 # Redis 库序号（cluster 忽略）
   keyPrefix: "pangza:" # 所有 key 的前缀
+  connectTimeout: 3000 # 连接超时（毫秒）
+  reconnect: true # 断线指数退避重连；false 则不重连
+  maxReconnectDelay: 10000 # 重连最大间隔（毫秒）
+  mode: standalone # standalone | cluster | sentinel
+  # cluster:
+  #   useReplicas: false
+  #   nodes:
+  #     - { host: 127.0.0.1, port: 7000 }
+  #     - { host: 127.0.0.1, port: 7001 }
+  # sentinel:
+  #   name: mymaster
+  #   nodes:
+  #     - { host: 127.0.0.1, port: 26379 }
+  tls:
+    enabled: false # 跨网 / 云 Redis 建议 true
+    rejectUnauthorized: true # 自签调试可 false；生产保持 true
+    # ca: /path/ca.pem
+    # cert: /path/client.crt
+    # key: /path/client.key
 
 upload:
   path: upload # 上传文件保存目录，相对路径相对项目根目录

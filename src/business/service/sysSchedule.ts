@@ -139,7 +139,7 @@ export default class SysScheduleService extends BaseService {
     const schedule = await this.getSchedule(id);
     const beanName = String(schedule.beanName ?? "");
     this.validateBean(beanName);
-    ScheduleManager.runOnce(beanName);
+    await ScheduleManager.runOnce(beanName);
   }
 
   async changeStatus(id: string, status: number | undefined): Promise<void> {

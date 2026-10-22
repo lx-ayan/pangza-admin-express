@@ -17,13 +17,42 @@ interface DatasourceYaml {
 }
 
 interface AppYaml {
-  server?: { port?: number };
+  server?: {
+    port?: number;
+    /**
+     * 是否信任反向代理传入的 X-Forwarded-For / X-Real-IP 等。
+     * 默认 false：只用直连 socket IP，防止伪造头绕过按 IP 限流。
+     * 仅当前面有可信 Nginx/网关时再设 true。
+     */
+    trustProxy?: boolean;
+  };
   redis?: {
     host?: string;
     port?: number;
     password?: string;
+    username?: string;
     db?: number;
     keyPrefix?: string;
+    connectTimeout?: number;
+    reconnect?: boolean;
+    maxReconnectDelay?: number;
+    /** standalone | cluster | sentinel */
+    mode?: string;
+    tls?: {
+      enabled?: boolean;
+      rejectUnauthorized?: boolean;
+      ca?: string;
+      cert?: string;
+      key?: string;
+    };
+    cluster?: {
+      nodes?: Array<{ host?: string; port?: number }>;
+      useReplicas?: boolean;
+    };
+    sentinel?: {
+      name?: string;
+      nodes?: Array<{ host?: string; port?: number }>;
+    };
   };
   upload?: { path?: string; urlPrefix?: string };
   datasource?: {
@@ -169,6 +198,74 @@ export const configProfile = loaded.profile;
 /** 实际读入的配置文件（后者覆盖前者） */
 export const configFiles = loaded.files;
 
+/** 合并后的 YAML 根对象（只读视图，勿原地改） */
+export function getConfig(): Readonly<Plain> {
+  return appYaml as Plain;
+}
+
+/** `${server.port}` / `${server.port:3990}` → path + 可选默认值字符串 */
+const VALUE_PLACEHOLDER = /^\$\{([^}:]+)(?::([^}]*))?\}$/;
+
+export function parseValueExpression(expression: string): {
+  path: string;
+  defaultText?: string;
+} {
+  const trimmed = expression.trim();
+  const matched = VALUE_PLACEHOLDER.exec(trimmed);
+  if (matched) {
+    return {
+      path: matched[1].trim(),
+      defaultText: matched[2] !== undefined ? matched[2] : undefined,
+    };
+  }
+  return { path: trimmed };
+}
+
+/** 占位符默认值轻量转换：true/false/null/数字，其余保持字符串 */
+export function coerceConfigScalar(raw: string): unknown {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  if (raw === "null") return null;
+  if (raw === "") return "";
+  if (/^-?\d+$/.test(raw)) return Number(raw);
+  if (/^-?\d+\.\d+$/.test(raw)) return Number(raw);
+  return raw;
+}
+
+/**
+ * 按点路径读取 YAML 配置。
+ *
+ * @example
+ * getConfigValue("server.port")
+ * getConfigValue("redis.host", "127.0.0.1")
+ * getConfigValue("${orm.logicDelete:true}")
+ */
+export function getConfigValue<T = unknown>(
+  pathOrExpression: string,
+  defaultValue?: T
+): T {
+  const { path, defaultText } = parseValueExpression(pathOrExpression);
+  const fallback =
+    defaultValue !== undefined
+      ? defaultValue
+      : defaultText !== undefined
+        ? (coerceConfigScalar(defaultText) as T)
+        : undefined;
+
+  const parts = path.split(".").map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return fallback as T;
+
+  let current: unknown = appYaml;
+  for (const part of parts) {
+    if (current == null || typeof current !== "object") {
+      return fallback as T;
+    }
+    current = (current as Plain)[part];
+  }
+  if (current === undefined) return fallback as T;
+  return current as T;
+}
+
 function asString(value: unknown, fallback = ""): string {
   if (value == null) return fallback;
   return String(value);
@@ -232,13 +329,62 @@ const defaultDs = mapDatasource(appYaml.datasource?.default, {
 /** 服务端口 */
 export const PORT = asInt(appYaml.server?.port, 3990);
 
+/**
+ * 是否信任反向代理的客户端 IP 头。
+ * false（默认）：`getClientIp` / Express `req.ip` 只用直连地址。
+ */
+export const trustProxy = asBool(appYaml.server?.trustProxy, false);
+
+const redisTls = appYaml.redis?.tls ?? {};
+const redisModeRaw = asString(appYaml.redis?.mode, "standalone").toLowerCase();
+const redisMode =
+  redisModeRaw === "cluster" || redisModeRaw === "sentinel"
+    ? redisModeRaw
+    : "standalone";
+
+function parseRedisNodes(
+  nodes: Array<{ host?: string; port?: number }> | undefined,
+  defaultPort: number
+): Array<{ host: string; port: number }> {
+  if (!Array.isArray(nodes)) return [];
+  return nodes
+    .map((n) => ({
+      host: asString(n?.host, "").trim(),
+      port: asInt(n?.port, defaultPort),
+    }))
+    .filter((n) => n.host.length > 0);
+}
+
 /** Redis 配置 */
 export const redisConfig = {
   host: asString(appYaml.redis?.host, "127.0.0.1"),
   port: asInt(appYaml.redis?.port, 6379),
   password: asString(appYaml.redis?.password, ""),
+  username: asString(appYaml.redis?.username, ""),
   db: asInt(appYaml.redis?.db, 0),
   keyPrefix: asString(appYaml.redis?.keyPrefix, "pangza:"),
+  connectTimeout: Math.max(500, asInt(appYaml.redis?.connectTimeout, 3000)),
+  reconnect: asBool(appYaml.redis?.reconnect, true),
+  maxReconnectDelay: Math.max(
+    1000,
+    asInt(appYaml.redis?.maxReconnectDelay, 10000)
+  ),
+  mode: redisMode as "standalone" | "cluster" | "sentinel",
+  tls: {
+    enabled: asBool(redisTls.enabled, false),
+    rejectUnauthorized: asBool(redisTls.rejectUnauthorized, true),
+    ca: asString(redisTls.ca, "") || undefined,
+    cert: asString(redisTls.cert, "") || undefined,
+    key: asString(redisTls.key, "") || undefined,
+  },
+  cluster: {
+    nodes: parseRedisNodes(appYaml.redis?.cluster?.nodes, 6379),
+    useReplicas: asBool(appYaml.redis?.cluster?.useReplicas, false),
+  },
+  sentinel: {
+    name: asString(appYaml.redis?.sentinel?.name, "") || undefined,
+    nodes: parseRedisNodes(appYaml.redis?.sentinel?.nodes, 26379),
+  },
 };
 
 /**

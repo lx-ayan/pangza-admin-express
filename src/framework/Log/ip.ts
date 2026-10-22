@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import IP2Region from "ip2region";
+import { trustProxy } from "@/framework/config";
 import { getLogger } from "@/framework/Logger";
 
 const log = getLogger("OperLog.IP");
@@ -48,33 +49,57 @@ export function normalizeIp(ip: string): string {
   return v;
 }
 
-/**
- * 从请求解析客户端真实 IP（在请求生命周期内同步调用，勿等到连接关闭后）。
- */
-export function getClientIp(req: Request): string {
-  const candidates: unknown[] = [
-    req.headers["x-forwarded-for"],
-    req.headers["x-real-ip"],
-    req.headers["cf-connecting-ip"],
-    req.headers["x-client-ip"],
-    (req as any).ip,
-    req.socket?.remoteAddress,
-    (req.connection as any)?.remoteAddress,
-  ];
+function pickFromHeader(raw: unknown): string {
+  if (typeof raw === "string" && raw.trim()) {
+    // x-forwarded-for: client, proxy1, proxy2 — 取最左侧客户端
+    const first = raw.split(",")[0]!.trim();
+    return normalizeIp(first);
+  }
+  if (Array.isArray(raw) && raw.length > 0) {
+    return normalizeIp(String(raw[0]));
+  }
+  return "";
+}
 
+function socketIp(req: Request): string {
+  const candidates: unknown[] = [
+    (req as { ip?: string }).ip,
+    req.socket?.remoteAddress,
+    (req.connection as { remoteAddress?: string } | undefined)?.remoteAddress,
+  ];
   for (const raw of candidates) {
     if (typeof raw === "string" && raw.trim()) {
-      // x-forwarded-for: client, proxy1, proxy2
-      const first = raw.split(",")[0]!.trim();
-      const ip = normalizeIp(first);
-      if (ip) return ip;
-    }
-    if (Array.isArray(raw) && raw.length > 0) {
-      const ip = normalizeIp(String(raw[0]));
+      const ip = normalizeIp(raw);
       if (ip) return ip;
     }
   }
   return "";
+}
+
+/**
+ * 从请求解析客户端 IP。
+ * - `server.trustProxy: false`（默认）：只用直连 socket / Express req.ip，忽略转发头，防伪造绕过限流。
+ * - `server.trustProxy: true`：优先读 X-Forwarded-For / X-Real-IP 等（须前面有可信反代）。
+ * @param options.trustProxy 覆盖全局配置（测试用）
+ */
+export function getClientIp(
+  req: Request,
+  options?: { trustProxy?: boolean }
+): string {
+  const useProxy = options?.trustProxy ?? trustProxy;
+  if (useProxy) {
+    const forwarded = [
+      req.headers["x-forwarded-for"],
+      req.headers["x-real-ip"],
+      req.headers["cf-connecting-ip"],
+      req.headers["x-client-ip"],
+    ];
+    for (const raw of forwarded) {
+      const ip = pickFromHeader(raw);
+      if (ip) return ip;
+    }
+  }
+  return socketIp(req);
 }
 
 export interface IpRegionResult {

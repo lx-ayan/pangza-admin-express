@@ -22,6 +22,9 @@ class AppContainer {
     defaultScope: "Singleton",
   });
 
+  /** 已绑定的类（按注册顺序，供 ApplicationInit / Destroy 扫描） */
+  private readonly boundClasses: Ctor[] = [];
+
   /** 确保类带 @injectable；已装饰则忽略 */
   ensureInjectable(ctor: Ctor): void {
     try {
@@ -41,6 +44,12 @@ class AppContainer {
       return;
     }
     this.raw.bind(ctor).toSelf().inSingletonScope();
+    this.boundClasses.push(ctor as Ctor);
+  }
+
+  /** 已绑定的类列表（注册顺序） */
+  getBoundClasses(): Ctor[] {
+    return [...this.boundClasses];
   }
 
   /**
@@ -97,6 +106,7 @@ class AppContainer {
   /** 测试用：清空全部绑定 */
   clear(): void {
     this.raw.unbindAll();
+    this.boundClasses.length = 0;
   }
 }
 

@@ -3,6 +3,11 @@ import type { RouteOption } from "./types";
 import type { AuthCheckMode } from "@/framework/Auth";
 import type { LogRecordOption } from "@/framework/Log";
 import {
+  getConfigValue,
+  parseValueExpression,
+  coerceConfigScalar,
+} from "@/framework/config";
+import {
   addControllerRoute,
   addMethodParam,
   mergeMethodAuth,
@@ -188,6 +193,65 @@ export function RequestCookie(): ParameterDecorator {
     addMethodParam((target as object).constructor, String(propertyKey), {
       index: parameterIndex,
       source: "cookie",
+    });
+  };
+}
+
+/**
+ * 属性注入：从合并后的 application*.yaml 按路径取值。
+ * 支持 `server.port`、`${server.port}`、`${server.port:3990}`；
+ * 第二参数为未配置时的默认值（优先于占位符内默认）。
+ *
+ * @example
+ * @Value("server.port")
+ * private port!: number;
+ *
+ * @Value("${upload.path:upload}")
+ * private uploadPath!: string;
+ *
+ * @Value("redis.host", "127.0.0.1")
+ * private redisHost!: string;
+ */
+export function Value(
+  expression: string,
+  defaultValue?: unknown
+): PropertyDecorator {
+  return (target, propertyKey) => {
+    if (!expression?.trim()) {
+      throw new Error(`@Value 表达式不能为空，属性: ${String(propertyKey)}`);
+    }
+
+    const { path, defaultText } = parseValueExpression(expression);
+    if (!path) {
+      throw new Error(`@Value 路径无效: ${expression}`);
+    }
+
+    const fallback =
+      defaultValue !== undefined
+        ? defaultValue
+        : defaultText !== undefined
+          ? coerceConfigScalar(defaultText)
+          : undefined;
+
+    const key = String(propertyKey);
+    Object.defineProperty(target, key, {
+      get() {
+        const own = Object.prototype.hasOwnProperty.call(this, key)
+          ? (this as Record<string, unknown>)[key]
+          : undefined;
+        if (own !== undefined) return own;
+        return getConfigValue(path, fallback);
+      },
+      set(value: unknown) {
+        Object.defineProperty(this, key, {
+          value,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      },
+      enumerable: true,
+      configurable: true,
     });
   };
 }

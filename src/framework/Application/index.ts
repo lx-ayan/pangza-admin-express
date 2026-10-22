@@ -1,7 +1,7 @@
 import express, { Express, Router, Request } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { PORT } from '@/framework/config';
+import { PORT, trustProxy } from '@/framework/config';
 import ResponseData from '@/framework/utils/entity/ResponseData';
 import { AUTH_MIDDLEWARE_FLAG, AuthError, AuthUtil, getAuthOptions, isGloballyIgnored } from '@/framework/Auth';
 import {
@@ -31,6 +31,9 @@ import {
     resolveCallbackArgs,
     resolveRawCallbackArgs,
 } from './callbackArgs';
+import { hookProcessDestroy, runApplicationInits } from './lifecycle';
+import { installProcessErrorGuards } from './processGuards';
+import { warmupConnections } from './warmup';
 
 const log = getLogger('Application');
 
@@ -42,12 +45,22 @@ type RouteRuntimeMeta = RouteOption & {
 let __isStart = false;
 
 const app: Express = express();
+// 与 server.trustProxy 对齐：false 时 req.ip 为直连地址，防伪造 X-Forwarded-For
+app.set('trust proxy', trustProxy);
 
 const router = Router();
 
 export function applicationStart() {
     return app.listen(PORT, () => {
         log.info(`Server is running on port ${PORT}`);
+        hookProcessDestroy();
+        // 端口已起来：并行预热连接 + ApplicationInit（均不阻塞 listen）
+        void warmupConnections().catch((err) => {
+            log.warn({ err }, '连接预热异常');
+        });
+        void runApplicationInits().catch((err) => {
+            log.error({ err }, 'ApplicationInit 阶段失败');
+        });
     });
 }
 
@@ -159,6 +172,7 @@ class Application {
      * 使用者通常只需 registry(...).start()
      */
     static start() {
+        installProcessErrorGuards();
         if (!this.controllersLoaded) {
             this.loadControllers();
         }
@@ -279,7 +293,7 @@ class Application {
         return this;
     }
 
-    /** 加载单个扫描根：分层目录优先，再兜底全量递归 */
+    /** 加载单个扫描根：分层目录优先，再兜底全量递归（跳过已加载的 phase 目录） */
     private static loadScanRoot(root: string) {
         if (!fs.existsSync(root)) {
             log.warn(`扫描目录不存在: ${root}`);
@@ -296,24 +310,33 @@ class Application {
             "advice",
             "modules",
         ];
+        const loadedPhaseDirs = new Set<string>();
         for (const phase of phases) {
             const dir = path.join(root, phase);
             if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+                const norm = path.normalize(dir);
+                loadedPhaseDirs.add(norm);
                 this.loadModuleFiles(dir);
             }
         }
-        // 兜底：根下其余文件（自定义扁平结构、其它子目录）
-        this.loadModuleFiles(root);
+        // 兜底：根下其余文件（跳过已扫过的 phase，避免重复 readdir）
+        this.loadModuleFiles(root, loadedPhaseDirs);
     }
 
-    private static loadModuleFiles(dir: string) {
+    private static loadModuleFiles(
+        dir: string,
+        skipDirs: Set<string> = new Set()
+    ) {
         if (!fs.existsSync(dir)) {
             return;
         }
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
-                this.loadModuleFiles(full);
+                if (skipDirs.has(path.normalize(full))) {
+                    continue;
+                }
+                this.loadModuleFiles(full, skipDirs);
                 continue;
             }
             // 跳过类型声明与 source map
@@ -329,7 +352,15 @@ class Application {
                 continue;
             }
             this.loadedFiles.add(resolved);
-            require(resolved);
+            try {
+                require(resolved);
+            } catch (err) {
+                // 单个业务模块加载失败：打日志并继续，避免整站起不来
+                log.error(
+                    { err, file: resolved },
+                    '加载模块失败，已跳过'
+                );
+            }
         }
     }
 
@@ -548,7 +579,14 @@ class Application {
 
 export default Application;
 export { ParamType };
-export type { RouteOption };
+export type { RouteOption, ApplicationInit, ApplicationDestroy } from './types';
+export {
+    runApplicationInits,
+    runApplicationDestroys,
+    hookProcessDestroy,
+    isApplicationInit,
+    isApplicationDestroy,
+} from './lifecycle';
 export {
     Controller,
     GetMapping,
@@ -566,6 +604,7 @@ export {
     RequestPath,
     RequestHeader,
     RequestCookie,
+    Value,
 } from "./decorators";
 export { BusinessType, OperType } from "@/framework/Log";
 export {

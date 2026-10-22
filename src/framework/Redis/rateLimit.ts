@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import type { Request } from "express";
 import Redis from "./Redis";
 import { getClientIp } from "@/framework/Log/ip";
@@ -11,16 +12,20 @@ import {
   type RepeatSubmitOption,
 } from "./types";
 
-function buildRateLimitKey(
+async function buildRateLimitKey(
   option: RateLimitOption,
   req: Request,
   meta: { controllerName?: string; handlerName?: string }
-): string {
+): Promise<string> {
   const prefix = option.key ?? RATE_LIMIT_KEY;
   let key = prefix;
   const type = String(option.type ?? RateLimiterType.DEFAULT);
   if (type === RateLimiterType.IP || type === "IP") {
     key += `${getClientIp(req)}-`;
+  } else if (type === RateLimiterType.USER || type === "USER") {
+    const loginId =
+      (await AuthUtil.getLoginIdDefaultNull()) ?? "anonymous";
+    key += `${loginId}-`;
   }
   const controller = meta.controllerName || "Anonymous";
   const handler = meta.handlerName || req.path;
@@ -40,19 +45,17 @@ export async function applyRateLimit(
 
   const time = option.time ?? 2;
   const count = option.count ?? 1;
-  const current = await Redis.rateLimit(
-    buildRateLimitKey(option, req, meta),
-    time,
-    count
-  );
+  const key = await buildRateLimitKey(option, req, meta);
+  const mode = option.mode ?? "fixed";
+  const current =
+    mode === "sliding"
+      ? await Redis.rateLimitSliding(key, time, count)
+      : await Redis.rateLimit(key, time, count);
 
   if (current > count) {
     throw new GuardError("访问过于频繁，请稍后重试");
   }
 }
-
-const REPEAT_PARAM = "repeat_param";
-const REPEAT_TIME = "repeat_time";
 
 function serializeParams(req: Request): string {
   const body = req.body;
@@ -73,14 +76,19 @@ function serializeParams(req: Request): string {
   }
 }
 
-async function buildRepeatKey(req: Request): Promise<string> {
+function hashParams(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex").slice(0, 32);
+}
+
+async function buildRepeatBaseKey(req: Request): Promise<string> {
   const loginId =
     (await AuthUtil.getLoginIdDefaultNull()) ?? "anonymous";
-  return `${REPEAT_SUBMIT_KEY}${req.originalUrl || req.url || req.path}${loginId}`;
+  return `${REPEAT_SUBMIT_KEY}${req.originalUrl || req.url || req.path}:${loginId}`;
 }
 
 /**
- * 防重复提交（对齐 Java RepeatSubmitInterceptor）
+ * 防重复提交（对齐 Java RepeatSubmitInterceptor）。
+ * 用 SET NX PX 原子占坑：同 URL + 用户 + 参数指纹在 interval 内只能成功一次，无竞态。
  */
 export async function applyRepeatSubmit(
   option: RepeatSubmitOption | undefined,
@@ -90,24 +98,11 @@ export async function applyRepeatSubmit(
 
   const interval = option.interval ?? 3000;
   const message = option.message ?? "请勿重复提交";
-  const nowParams = serializeParams(req);
-  const nowData = {
-    [REPEAT_PARAM]: nowParams,
-    [REPEAT_TIME]: Date.now(),
-  };
+  const fingerprint = hashParams(serializeParams(req));
+  const key = `${await buildRepeatBaseKey(req)}:${fingerprint}`;
 
-  const key = await buildRepeatKey(req);
-  const cache = await Redis.getJSON<Record<string, unknown>>(key);
-
-  if (cache) {
-    const sameParam =
-      String(cache[REPEAT_PARAM] ?? "") === String(nowData[REPEAT_PARAM]);
-    const cachedTime = Number(cache[REPEAT_TIME] ?? 0);
-    const nowTime = Number(nowData[REPEAT_TIME]);
-    if (sameParam && nowTime - cachedTime < interval) {
-      throw new GuardError(message);
-    }
+  const ok = await Redis.setNxPx(key, "1", Math.max(1, interval));
+  if (!ok) {
+    throw new GuardError(message);
   }
-
-  await Redis.setJSONPx(key, nowData, Math.max(1, interval));
 }

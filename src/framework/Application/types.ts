@@ -87,3 +87,30 @@ export interface RouteOption {
   /** design:paramtypes，供 @Validate 使用 */
   paramTypes?: Function[];
 }
+
+/**
+ * 应用启动成功后回调（listen 成功）。
+ * 实现类需已由 `@Component` / `@Service` / `@Mapper` / `@Controller` 注册进容器。
+ *
+ * @example
+ * @Component()
+ * class Warmup implements ApplicationInit {
+ *   async init() { await Redis.ping(); }
+ * }
+ */
+export interface ApplicationInit {
+  init: () => void | Promise<void>;
+}
+
+/**
+ * 应用结束前回调（SIGINT / SIGTERM）。
+ *
+ * @example
+ * @Component()
+ * class Cleanup implements ApplicationDestroy {
+ *   async destroy() { await Redis.disconnect(); }
+ * }
+ */
+export interface ApplicationDestroy {
+  destroy: () => void | Promise<void>;
+}

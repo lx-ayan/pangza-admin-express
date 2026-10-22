@@ -152,17 +152,6 @@ try {
   console.error("[ORM] XML Mapper 加载失败:", err);
 }
 
-// 按 YAML 自动连接默认数据源（失败仅打日志，首次 query 会再试）
-void Db.connect().catch((err: Error) => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { getLogger } = require("@/framework/Logger") as {
-      getLogger: (n?: string) => { error: (...a: unknown[]) => void };
-    };
-    getLogger("ORM").error({ err }, "默认数据源自动连接失败");
-  } catch {
-    console.error("[ORM] 默认数据源自动连接失败:", err.message);
-  }
-});
+// 不在 import 时连库：避免启动被 DB 超时拖慢；首次 query 走 DataSource.connect()
 
 export default Db;

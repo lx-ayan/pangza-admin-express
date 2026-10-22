@@ -51,6 +51,7 @@ export type AuthRedisClient = {
   sMembers(key: string): Promise<string[]>;
   sRem(key: string, ...members: string[]): Promise<number>;
   expire?(key: string, ttlSeconds: number): Promise<boolean>;
+  ttl?(key: string): Promise<number>;
 };
 
 /** 登录额外参数 */

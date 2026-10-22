@@ -77,6 +77,8 @@ export type RedisLike = {
   sMembers(key: string): Promise<string[]>;
   sRem(key: string, ...members: string[]): Promise<number>;
   expire?(key: string, ttlSeconds: number): Promise<boolean>;
+  /** 剩余秒数；-1 永不过期，-2 不存在 */
+  ttl?(key: string): Promise<number>;
 };
 
 /**
@@ -104,10 +106,30 @@ export class RedisStore implements SessionStore {
     return Math.max(1, Math.ceil((session.expireTime - Date.now()) / 1000));
   }
 
+  /**
+   * uid set 需要过期，否则 token key 过期后 set 残留幽灵 member。
+   * 多端登录时只延长、不缩短（取 max(当前剩余, 本次 ttl)）。
+   */
+  private async refreshUidExpire(
+    loginId: LoginId,
+    ttl: number | undefined
+  ): Promise<void> {
+    if (ttl == null || !this.redis.expire) return;
+    const key = this.uidKey(loginId);
+    if (this.redis.ttl) {
+      const left = await this.redis.ttl(key);
+      if (left === -1) return; // 已是永不过期（永不过期会话）
+      if (left > ttl) return;
+    }
+    await this.redis.expire(key, ttl);
+  }
+
   async set(session: AuthSession): Promise<void> {
     const ttl = this.ttlSeconds(session);
     await this.redis.setJSON(this.tokenKey(session.token), session, ttl);
-    await this.redis.sAdd(this.uidKey(session.loginId), session.token);
+    const uidKey = this.uidKey(session.loginId);
+    await this.redis.sAdd(uidKey, session.token);
+    await this.refreshUidExpire(session.loginId, ttl);
   }
 
   async getByToken(token: string): Promise<AuthSession | null> {
@@ -122,9 +144,34 @@ export class RedisStore implements SessionStore {
     }
   }
 
-  async removeByLoginId(loginId: LoginId): Promise<void> {
+  /**
+   * 清理 uid set 中 token key 已不存在的幽灵 member（TTL 竞态或旧数据）。
+   * @returns 仍有效的 token 列表
+   */
+  private async pruneUidTokens(loginId: LoginId): Promise<string[]> {
     const key = this.uidKey(loginId);
     const tokens = await this.redis.sMembers(key);
+    if (!tokens.length) return [];
+
+    const alive: string[] = [];
+    const ghosts: string[] = [];
+    for (const token of tokens) {
+      const session = await this.redis.getJSON(this.tokenKey(token));
+      if (session) alive.push(token);
+      else ghosts.push(token);
+    }
+    if (ghosts.length) {
+      await this.redis.sRem(key, ...ghosts);
+    }
+    if (alive.length === 0) {
+      await this.redis.del(key);
+    }
+    return alive;
+  }
+
+  async removeByLoginId(loginId: LoginId): Promise<void> {
+    const key = this.uidKey(loginId);
+    const tokens = await this.pruneUidTokens(loginId);
     if (tokens.length > 0) {
       await this.redis.del(...tokens.map((t) => this.tokenKey(t)), key);
     } else {
@@ -133,12 +180,13 @@ export class RedisStore implements SessionStore {
   }
 
   async listTokensByLoginId(loginId: LoginId): Promise<string[]> {
-    return this.redis.sMembers(this.uidKey(loginId));
+    return this.pruneUidTokens(loginId);
   }
 
   async touch(session: AuthSession): Promise<void> {
     const ttl = this.ttlSeconds(session);
     await this.redis.setJSON(this.tokenKey(session.token), session, ttl);
+    await this.refreshUidExpire(session.loginId, ttl);
   }
 }
 

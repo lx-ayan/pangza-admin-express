@@ -10,3 +10,11 @@ export class GuardError extends Error {
     this.code = code;
   }
 }
+
+/** 获取分布式锁失败 */
+export class LockError extends Error {
+  constructor(message = "获取锁失败") {
+    super(message);
+    this.name = "LockError";
+  }
+}

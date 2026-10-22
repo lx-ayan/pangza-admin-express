@@ -26,6 +26,7 @@ export {
   RequestPath,
   RequestHeader,
   RequestCookie,
+  Value,
   BusinessType,
   OperType,
   RateLimiter,
@@ -57,7 +58,11 @@ export {
   validateHandler,
   ValidationError,
 } from "./Application";
-export type { RouteOption } from "./Application";
+export type {
+  RouteOption,
+  ApplicationInit,
+  ApplicationDestroy,
+} from "./Application";
 
 // ─── Auth ───────────────────────────────────────────────────────
 export {
@@ -91,15 +96,49 @@ export {
   default as Redis,
   RATE_LIMIT_KEY,
   REPEAT_SUBMIT_KEY,
+  CACHE_KEY,
+  LOCK_KEY,
   GuardError,
+  LockError,
   applyRateLimit,
   applyRepeatSubmit,
+  Cacheable,
+  CacheEvict,
+  Redisson,
+  createRedisson,
+  defaultRedissonConfig,
 } from "./Redis";
 export type {
   RedisConfig,
+  RedisTlsConfig,
+  RedisMode,
+  RedisClusterConfig,
+  RedisSentinelConfig,
   RateLimitOption,
+  RateLimitMode,
   RepeatSubmitOption,
   RateLimiterTypeValue,
+  CacheableOption,
+  CacheEvictOption,
+  TryLockOption,
+  WithLockOption,
+  LockHandle,
+  RedissonClient,
+  RedissonConfig,
+  RLock,
+  RReadWriteLock,
+  RSemaphore,
+  RCountDownLatch,
+  RAtomicLong,
+  RBucket,
+  RMap,
+  RSet,
+  RList,
+  RScoredSortedSet,
+  RTopic,
+  RRateLimiter,
+  RBitSet,
+  RQueue,
 } from "./Redis";
 
 // ─── ORM ────────────────────────────────────────────────────────
@@ -329,11 +368,18 @@ export type {
 // ─── config ─────────────────────────────────────────────────────
 export {
   PORT,
+  trustProxy,
   redisConfig,
   mysqlConfig,
   UPLOAD_PATH,
   UPLOAD_URL_PREFIX,
   ormEnvConfig,
+  getConfig,
+  getConfigValue,
+  parseValueExpression,
+  coerceConfigScalar,
+  configProfile,
+  configFiles,
 } from "./config";
 
 // ─── encrypt（仅工具方法，不含业务开关 / 中间件）────────────────

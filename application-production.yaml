@@ -5,6 +5,10 @@
 
 server:
   port: 3990 # 生产 HTTP 端口
+  trustProxy: false # 有 Nginx/网关再改 true
+
+redis:
+  password: "" # 生产务必设置密码（或放到 CONFIG_PATH 外部文件）；空则启动告警
 
 datasource:
   default:

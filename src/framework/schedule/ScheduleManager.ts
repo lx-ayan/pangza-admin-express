@@ -51,7 +51,7 @@ export function validateCron(cronExpr: string): string {
   return expr;
 }
 
-function invokeBean(beanName: string): void {
+async function invokeBean(beanName: string): Promise<void> {
   if (!beanName?.trim()) {
     throw new OrmError("执行类（Bean 名称）不能为空");
   }
@@ -60,11 +60,11 @@ function invokeBean(beanName: string): void {
   }
   const bean = Container.get<any>(beanName);
   if (typeof bean?.execute === "function") {
-    bean.execute();
+    await bean.execute();
     return;
   }
   if (typeof bean?.run === "function") {
-    bean.run();
+    await bean.run();
     return;
   }
   throw new OrmError(`Bean [${beanName}] 需实现 execute() 或 run()`);
@@ -93,17 +93,19 @@ class ScheduleManagerImpl {
     }
 
     const task = cron.schedule(expr, () => {
-      try {
-        console.log(
-          `[Schedule] 触发任务 id=${id}, title=${entity.title ?? ""}, bean=${beanName}`
-        );
-        invokeBean(beanName);
-      } catch (e) {
-        console.error(
-          `[Schedule] 任务执行失败 id=${id}:`,
-          e instanceof Error ? e.message : e
-        );
-      }
+      void (async () => {
+        try {
+          console.log(
+            `[Schedule] 触发任务 id=${id}, title=${entity.title ?? ""}, bean=${beanName}`
+          );
+          await invokeBean(beanName);
+        } catch (e) {
+          console.error(
+            `[Schedule] 任务执行失败 id=${id}:`,
+            e instanceof Error ? e.message : e
+          );
+        }
+      })();
     });
     this.jobs.set(id, task);
     console.log(`[Schedule] 已注册任务 id=${id}, cron=${expr}`);
@@ -117,8 +119,8 @@ class ScheduleManagerImpl {
     }
   }
 
-  runOnce(beanName: string): void {
-    invokeBean(beanName);
+  async runOnce(beanName: string): Promise<void> {
+    await invokeBean(beanName);
   }
 
   async loadEnabled(): Promise<void> {

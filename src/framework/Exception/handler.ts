@@ -4,7 +4,7 @@ import { ResponseCode } from "@/framework/types/enums";
 import { AuthError } from "@/framework/Auth";
 import { getLogger } from "@/framework/Logger";
 import { OrmError } from "@/framework/ORM";
-import { GuardError } from "@/framework/Redis";
+import { GuardError, LockError } from "@/framework/Redis";
 import { ValidationError } from "@/framework/Validate";
 import { resolveExceptionHandler } from "./registry";
 import { BizException } from "./types";
@@ -107,6 +107,12 @@ function sendBuiltin(res: Response, error: unknown): void {
   }
   if (error instanceof GuardError) {
     res.status(200).send(ResponseData.error(error.message, null, error.code));
+    return;
+  }
+  if (error instanceof LockError) {
+    res
+      .status(200)
+      .send(ResponseData.error(error.message, null, ResponseCode.ERROR));
     return;
   }
 

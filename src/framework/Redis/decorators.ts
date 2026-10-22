@@ -4,9 +4,12 @@ import {
   mergeMethodRepeatSubmit,
 } from "@/framework/Application/metadata";
 
+export { Cacheable, CacheEvict } from "./cache";
+
 /**
  * 接口限流（对齐 Java @RateLimiter）。
  * @example @RateLimiter({ time: 10, count: 3, type: RateLimiterType.IP })
+ * @example @RateLimiter({ time: 60, count: 30, type: RateLimiterType.USER, mode: 'sliding' })
  */
 export function RateLimiter(option: RateLimitOption = {}): MethodDecorator {
   return (target, propertyKey) => {

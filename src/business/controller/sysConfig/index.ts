@@ -1,4 +1,6 @@
 import {
+  ApplicationDestroy,
+  ApplicationInit,
   AuthCheckPermission,
   AuthIgnore,
   BusinessType,
@@ -17,7 +19,7 @@ import SysConfigService, {
 import type { PageRequest } from "@/framework/utils/entity/PageResult";
 
 @Controller("/api/sys_config")
-export default class SysConfigController {
+export default class SysConfigController implements ApplicationInit, ApplicationDestroy {
   @Resource(SysConfigService)
   sysConfigService!: SysConfigService;
 
@@ -57,5 +59,13 @@ export default class SysConfigController {
   async refreshCache() {
     await this.sysConfigService.refreshCache();
     return null;
+  }
+
+  async init() {
+    console.log("SysConfigController init");
+  }
+
+  async destroy() {
+    console.log("SysConfigController destroy");
   }
 }
