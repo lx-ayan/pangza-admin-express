@@ -1,16 +1,18 @@
 {
   "name": "pangza-admin-express",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "",
   "main": "index.js",
   "scripts": {
     "dev": "node -e \"if(process.platform==='win32'){require('child_process').spawnSync(process.env.ComSpec||'cmd.exe',['/c','chcp','65001','>nul'],{stdio:'ignore',windowsHide:true})}\" && ts-node-dev --transpile-only -r ./scripts/register-dev.js src/index.ts",
     "build": "node scripts/build.js",
     "build:raw": "node scripts/build.js --no-minify",
+    "build:lib": "node scripts/build-lib.js",
     "start": "node dist/index.js",
     "test": "node --require ./test/register.js --test --test-force-exit --test-reporter spec test/*.test.ts",
     "migrate": "node scripts/migrate.js"
   },
+
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lx-ayan/pangza-admin-express.git"

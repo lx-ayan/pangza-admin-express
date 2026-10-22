@@ -62,6 +62,10 @@ export type {
   RouteOption,
   ApplicationInit,
   ApplicationDestroy,
+  RequestInterceptor,
+  ResponseInterceptor,
+  RequestInterceptorContext,
+  ResponseInterceptorContext,
 } from "./Application";
 
 // ─── Auth ───────────────────────────────────────────────────────
@@ -94,6 +98,10 @@ export type {
 // ─── Redis（含限流 / 防重复提交）────────────────────────────────
 export {
   default as Redis,
+  EnableRedis,
+  REDIS_MODULE_FLAG,
+  isRedisEnabled,
+  markRedisEnabled,
   RATE_LIMIT_KEY,
   REPEAT_SUBMIT_KEY,
   CACHE_KEY,
@@ -144,6 +152,10 @@ export type {
 // ─── ORM ────────────────────────────────────────────────────────
 export {
   default as Db,
+  EnableOrm,
+  ORM_MODULE_FLAG,
+  isOrmEnabled,
+  markOrmEnabled,
   BaseMapper,
   table,
   useTable,

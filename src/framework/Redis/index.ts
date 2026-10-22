@@ -1,4 +1,10 @@
 export { default } from "./Redis";
+export { EnableRedis } from "./enable";
+export {
+  REDIS_MODULE_FLAG,
+  isRedisEnabled,
+  markRedisEnabled,
+} from "./flag";
 export type {
   RedisConfig,
   RedisTlsConfig,

@@ -1,0 +1,39 @@
+{
+  "name": "create-pangza",
+  "version": "1.0.1",
+  "description": "Scaffold & generate for @pangza/express (init / g controller|service|mapper|entity|all)",
+  "bin": {
+    "create-pangza": "./bin/create-pangza.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "template",
+    "README.md"
+  ],
+  "keywords": [
+    "pangza",
+    "express",
+    "scaffold",
+    "create",
+    "init",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lx-ayan/pangza-admin-express.git",
+    "directory": "create-pangza"
+  },
+  "bugs": {
+    "url": "https://github.com/lx-ayan/pangza-admin-express/issues"
+  },
+  "homepage": "https://github.com/lx-ayan/pangza-admin-express#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

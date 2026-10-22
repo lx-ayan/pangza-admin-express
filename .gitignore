@@ -1,5 +1,22 @@
-node_modules
-dist
-logs
+# dependencies & runtime
+node_modules/
+dist/
+logs/
+*.log
+.env
+.env.*
+!.env.example
 
-docs/
+# npm pack leftovers
+*.tgz
+
+# lib build output（由 npm run build:lib 生成，勿提交）
+packages/pangza-express/
+packages/pangza-express-build/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

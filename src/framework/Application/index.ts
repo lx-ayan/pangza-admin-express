@@ -9,6 +9,16 @@ import {
     isLogRegistered,
     recordOperationLog,
 } from '@/framework/Log';
+import {
+    REDIS_MODULE_FLAG,
+    markRedisEnabled,
+    isRedisEnabled,
+} from '@/framework/Redis/flag';
+import {
+    ORM_MODULE_FLAG,
+    markOrmEnabled,
+    isOrmEnabled,
+} from '@/framework/ORM/flag';
 import { getClientIp } from '@/framework/Log/ip';
 import { getLogger } from '@/framework/Logger';
 import { OrmError } from '@/framework/ORM';
@@ -34,6 +44,15 @@ import {
 import { hookProcessDestroy, runApplicationInits } from './lifecycle';
 import { installProcessErrorGuards } from './processGuards';
 import { warmupConnections } from './warmup';
+import {
+    addRequestInterceptor,
+    addResponseInterceptor,
+    clearInterceptors,
+    runRequestInterceptors,
+    runResponseInterceptors,
+    type RequestInterceptor,
+    type ResponseInterceptor,
+} from './interceptors';
 
 const log = getLogger('Application');
 
@@ -84,6 +103,14 @@ function isLogMiddleware(param: unknown): boolean {
     return typeof param === 'function' && !!(param as any)[LOG_MIDDLEWARE_FLAG];
 }
 
+function isRedisModule(param: unknown): boolean {
+    return typeof param === 'function' && !!(param as any)[REDIS_MODULE_FLAG];
+}
+
+function isOrmModule(param: unknown): boolean {
+    return typeof param === 'function' && !!(param as any)[ORM_MODULE_FLAG];
+}
+
 function resolveLogStatus(error: unknown): string {
     if (!error) return '200';
     if (
@@ -104,6 +131,10 @@ class Application {
     private static authRegistered = false;
     /** 是否已通过 registry 注册 Log 中间件 */
     private static logRegistered = false;
+    /** 是否已 registry EnableRedis（或 Auth 绑定了 redis） */
+    private static redisRegistered = false;
+    /** 是否已 registry EnableOrm */
+    private static ormRegistered = false;
     /** 已注册过的 Controller，防止重复挂路由 */
     private static registeredControllers = new WeakSet<Function>();
     /** 已 require 过的模块文件 */
@@ -126,6 +157,49 @@ class Application {
     /** 是否已注册 Log 模块 */
     static hasLog() {
         return this.logRegistered || isLogRegistered();
+    }
+
+    /** 是否已启用 Redis（预热 / 连接校验） */
+    static hasRedis() {
+        return this.redisRegistered || isRedisEnabled();
+    }
+
+    /** 是否已启用 ORM（预热 / 连接校验） */
+    static hasOrm() {
+        return this.ormRegistered || isOrmEnabled();
+    }
+
+    /**
+     * 请求前拦截器（鉴权/限流之后、Controller 之前）。
+     * @example
+     * Application.addRequestInterceptor(async ({ req }) => {
+     *   console.log(req.method, req.path);
+     * });
+     */
+    static addRequestInterceptor(fn: RequestInterceptor): typeof Application {
+        addRequestInterceptor(fn);
+        return this;
+    }
+
+    /**
+     * 响应前拦截器（Controller 之后、写出之前）。
+     * 设 `ctx.wrap = false` 可跳过 ResponseData；或自行 `res.json` 后设 `ctx.handled = true`。
+     *
+     * @example
+     * Application.addResponseInterceptor(async (ctx) => {
+     *   ctx.wrap = false;
+     *   return { code: 0, result: ctx.data };
+     * });
+     */
+    static addResponseInterceptor(fn: ResponseInterceptor): typeof Application {
+        addResponseInterceptor(fn);
+        return this;
+    }
+
+    /** 清空全部请求/响应拦截器 */
+    static clearInterceptors(): typeof Application {
+        clearInterceptors();
+        return this;
     }
 
     /**
@@ -186,9 +260,22 @@ class Application {
         for (const item of list) {
             if (isAuthMiddleware(item)) {
                 this.authRegistered = true;
+                // Auth 显式绑定了 redis 实现时，视为启用 Redis
+                if (getAuthOptions()?.redis) {
+                    this.redisRegistered = true;
+                    markRedisEnabled(true);
+                }
             }
             if (isLogMiddleware(item)) {
                 this.logRegistered = true;
+            }
+            if (isRedisModule(item)) {
+                this.redisRegistered = true;
+                markRedisEnabled(true);
+            }
+            if (isOrmModule(item)) {
+                this.ormRegistered = true;
+                markOrmEnabled(true);
             }
         }
         Array.isArray(param) ? app.use(...param) : app.use(param);
@@ -523,7 +610,16 @@ class Application {
             try {
                 await this.applyRouteAuth(option, req);
                 await this.applyRouteGuards(option, req);
+
+                const reqCtx = await runRequestInterceptors(req, response, option);
+                if (response.headersSent) {
+                    return;
+                }
+
                 if (option?.flux || option?.raw) {
+                    if (reqCtx.skipHandler) {
+                        return;
+                    }
                     if (option?.flux) {
                         this.prepareFluxResponse(req, response);
                     }
@@ -538,13 +634,33 @@ class Application {
                     }
                     await callback(...args);
                 } else {
-                    const args = resolveCallbackArgs(req, option, callback.length);
-                    if (option?.validate) {
-                        await validateMethodArgs(args, option.paramTypes ?? []);
+                    if (!reqCtx.skipHandler) {
+                        const args = resolveCallbackArgs(req, option, callback.length);
+                        if (option?.validate) {
+                            await validateMethodArgs(args, option.paramTypes ?? []);
+                        }
+                        result = await callback(...args);
+                    } else {
+                        result = reqCtx.data;
                     }
-                    result = await callback(...args);
+
                     const serialized = ObjectMapper.writeValue(result);
-                    response.send(ResponseData.success(serialized));
+                    const resCtx = await runResponseInterceptors({
+                        req,
+                        res: response,
+                        option,
+                        data: serialized,
+                    });
+                    if (resCtx.handled || response.headersSent) {
+                        result = resCtx.data;
+                        return;
+                    }
+                    result = resCtx.data;
+                    if (resCtx.wrap) {
+                        response.send(ResponseData.success(resCtx.data));
+                    } else {
+                        response.send(resCtx.data);
+                    }
                 }
             } catch (e) {
                 error = e;
@@ -580,6 +696,12 @@ class Application {
 export default Application;
 export { ParamType };
 export type { RouteOption, ApplicationInit, ApplicationDestroy } from './types';
+export type {
+    RequestInterceptor,
+    ResponseInterceptor,
+    RequestInterceptorContext,
+    ResponseInterceptorContext,
+} from './interceptors';
 export {
     runApplicationInits,
     runApplicationDestroys,

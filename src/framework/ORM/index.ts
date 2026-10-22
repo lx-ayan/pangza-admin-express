@@ -1,6 +1,8 @@
 import Db from "./Db";
 
 export { Db };
+export { EnableOrm } from "./enable";
+export { ORM_MODULE_FLAG, isOrmEnabled, markOrmEnabled } from "./flag";
 export { BaseMapper } from "./BaseMapper";
 export { table, useTable, clearTableCache } from "./table";
 export { QueryWrapper, assertIdent } from "./QueryWrapper";

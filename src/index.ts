@@ -12,8 +12,8 @@ import cors from "cors";
 import Auth from "./framework/Auth";
 import Log from "./framework/Log";
 import Logger from "./framework/Logger";
-import { configureOrm } from "./framework/ORM";
-import Redis from "./framework/Redis";
+import { configureOrm, EnableOrm } from "./framework/ORM";
+import Redis, { EnableRedis } from "./framework/Redis";
 
 // 最先配置 pino，后续 getLogger 才绑到同一实例
 Application.registry(Logger({ level: "info" }));
@@ -28,6 +28,9 @@ app.use(UPLOAD_URL_PREFIX, express.static(UPLOAD_PATH));
 
 Application.registry(cors())
   .registry(json())
+  // 按需启用：未 registry 时启动不会连 Redis / 数据库
+  .registry(EnableRedis())
+  .registry(EnableOrm())
   .registry(
     Auth({
       // 对齐 Sa-Token 常用配置
